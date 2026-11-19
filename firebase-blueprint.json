@@ -1,0 +1,250 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Patient profile and default morning, afternoon, and night reminder times.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the patient."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Patient display name."
+        },
+        "morningHour": {
+          "type": "integer",
+          "description": "Default morning reminder hour (0-23)."
+        },
+        "morningMinute": {
+          "type": "integer",
+          "description": "Default morning reminder minute (0-59)."
+        },
+        "afternoonHour": {
+          "type": "integer",
+          "description": "Default afternoon reminder hour (0-23)."
+        },
+        "afternoonMinute": {
+          "type": "integer",
+          "description": "Default afternoon reminder minute (0-59)."
+        },
+        "nightHour": {
+          "type": "integer",
+          "description": "Default night reminder hour (0-23)."
+        },
+        "nightMinute": {
+          "type": "integer",
+          "description": "Default night reminder minute (0-59)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "morningHour",
+        "morningMinute",
+        "afternoonHour",
+        "afternoonMinute",
+        "nightHour",
+        "nightMinute",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Medicine": {
+      "title": "Medicine",
+      "description": "A patient medicine entry with dosage, meal timing, and morning/afternoon/night reminder schedule.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owning patient."
+        },
+        "name": {
+          "type": "string",
+          "description": "Medicine name (1-80 characters)."
+        },
+        "dosage": {
+          "type": "string",
+          "description": "Dosage instruction such as '500 mg' or '1 tablet'."
+        },
+        "form": {
+          "type": "string",
+          "enum": ["TABLET", "CAPSULE", "SYRUP", "INJECTION", "DROPS", "INHALER"],
+          "description": "Physical form of the medicine."
+        },
+        "mealRelation": {
+          "type": "string",
+          "enum": ["BEFORE_MEAL", "AFTER_MEAL", "WITH_MEAL", "ANYTIME"],
+          "description": "When to take relative to meals."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional patient notes or doctor instructions."
+        },
+        "morningEnabled": {
+          "type": "boolean",
+          "description": "Whether morning reminder is active."
+        },
+        "morningHour": {
+          "type": "integer",
+          "description": "Morning reminder hour (0-23)."
+        },
+        "morningMinute": {
+          "type": "integer",
+          "description": "Morning reminder minute (0-59)."
+        },
+        "afternoonEnabled": {
+          "type": "boolean",
+          "description": "Whether afternoon reminder is active."
+        },
+        "afternoonHour": {
+          "type": "integer",
+          "description": "Afternoon reminder hour (0-23)."
+        },
+        "afternoonMinute": {
+          "type": "integer",
+          "description": "Afternoon reminder minute (0-59)."
+        },
+        "nightEnabled": {
+          "type": "boolean",
+          "description": "Whether night reminder is active."
+        },
+        "nightHour": {
+          "type": "integer",
+          "description": "Night reminder hour (0-23)."
+        },
+        "nightMinute": {
+          "type": "integer",
+          "description": "Night reminder minute (0-59)."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether reminders for this medicine are active."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "name",
+        "dosage",
+        "form",
+        "mealRelation",
+        "notes",
+        "morningEnabled",
+        "morningHour",
+        "morningMinute",
+        "afternoonEnabled",
+        "afternoonHour",
+        "afternoonMinute",
+        "nightEnabled",
+        "nightHour",
+        "nightMinute",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DoseLog": {
+      "title": "DoseLog",
+      "description": "Record of a scheduled medicine dose taken or skipped on a specific date and slot.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owning patient."
+        },
+        "medicineId": {
+          "type": "string",
+          "description": "Document ID of the associated Medicine."
+        },
+        "medicineName": {
+          "type": "string",
+          "description": "Snapshot of medicine name for historical display."
+        },
+        "dosage": {
+          "type": "string",
+          "description": "Snapshot of medicine dosage."
+        },
+        "dateKey": {
+          "type": "string",
+          "description": "Local calendar date key formatted as YYYY-MM-DD."
+        },
+        "slot": {
+          "type": "string",
+          "enum": ["MORNING", "AFTERNOON", "NIGHT"],
+          "description": "Time of day slot for the dose."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["TAKEN", "SKIPPED"],
+          "description": "Adherence outcome for this dose."
+        },
+        "scheduledTimeLabel": {
+          "type": "string",
+          "description": "Formatted scheduled time label such as '08:00 AM'."
+        },
+        "takenAtEpochMillis": {
+          "type": "integer",
+          "description": "Client epoch milliseconds when dose was logged."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "medicineId",
+        "medicineName",
+        "dosage",
+        "dateKey",
+        "slot",
+        "status",
+        "scheduledTimeLabel",
+        "takenAtEpochMillis",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Patient profile and default slot timing preferences."
+    },
+    "/users/{userId}/medicines/{medicineId}": {
+      "schema": { "$ref": "#/entities/Medicine" },
+      "description": "Patient medicine timetable entries scoped by userId."
+    },
+    "/users/{userId}/doseLogs/{logId}": {
+      "schema": { "$ref": "#/entities/DoseLog" },
+      "description": "Daily medication adherence logs scoped by userId."
+    }
+  }
+}

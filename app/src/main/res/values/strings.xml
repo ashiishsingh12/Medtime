@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">MedTime</string>
+    <string name="nav_today">Today</string>
+    <string name="nav_medicines">Timetable</string>
+    <string name="nav_history">History</string>
+    <string name="add_medicine">Add Medicine</string>
+    <string name="edit_medicine">Edit Medicine</string>
+    <string name="notification_channel_name">Medicine Reminders</string>
+    <string name="notification_channel_description">Morning, afternoon, and night medication reminder alerts</string>
+</resources>
