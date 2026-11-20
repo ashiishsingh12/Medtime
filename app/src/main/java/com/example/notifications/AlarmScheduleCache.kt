@@ -34,7 +34,7 @@ object AlarmScheduleCache {
                             medicineId = med.id,
                             medicineName = med.name,
                             dosage = med.dosage,
-                            mealRelation = med.mealRelationEnum(),
+                            mealRelation = med.mealRelationFor(slot),
                             slot = slot,
                             hour = med.hourFor(slot),
                             minute = med.minuteFor(slot)

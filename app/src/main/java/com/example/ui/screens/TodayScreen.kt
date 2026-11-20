@@ -28,7 +28,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -44,14 +43,17 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,6 +62,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,7 +95,6 @@ fun TodayScreen(
     onToggleDoseTaken: (ScheduledDoseItem) -> Unit,
     onMarkDoseSkipped: (ScheduledDoseItem) -> Unit,
     onEditMedicine: (Medicine) -> Unit,
-    onAddMedicine: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val filteredDoses = remember(state.todayDoses, state.selectedFilter) {
@@ -102,15 +107,40 @@ fun TodayScreen(
             if (items.isEmpty()) null else slot to items
         }
     }
-
-    val todayLabel = remember {
-        SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Calendar.getInstance().time)
+    var currentTimeMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                currentTimeMillis = System.currentTimeMillis()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val greeting = remember {
-        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            currentTimeMillis = System.currentTimeMillis()
+        }
+    }
+
+    val calendar = remember(currentTimeMillis) {
+        Calendar.getInstance().apply { timeInMillis = currentTimeMillis }
+    }
+    val nextDose = remember(state.todayDoses, calendar) {
+        val nowMinutes = calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)
+        val pending = state.todayDoses.filter { !it.isTaken && !it.isSkipped }
+        pending.firstOrNull { (it.hour * 60 + it.minute) >= nowMinutes } ?: pending.firstOrNull()
+    }
+    val todayLabel = remember(calendar) {
+        SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(calendar.time)
+    }
+    val greeting = remember(calendar) {
+        val hour = calendar.get(Calendar.HOUR_OF_DAY)
         when {
             hour < 12 -> "Good Morning"
-            hour < 17 -> "Good Afternoon"
+            hour < 16 -> "Good Afternoon"
             else -> "Good Evening"
         }
     }
@@ -134,7 +164,7 @@ fun TodayScreen(
             item {
                 PermissionAlertBanner(
                     title = "Enable Medicine Alert Notifications",
-                    subtitle = "Allow notifications so MedTime can ring and remind you at morning, afternoon, and night times.",
+                    subtitle = "Allow notifications so MedTime can ring and remind you at morning, afternoon, evening, and night times.",
                     actionLabel = "Allow Alerts",
                     onActionClick = onRequestNotificationPermission,
                     testTag = "enable_notifications_button"
@@ -144,7 +174,7 @@ fun TodayScreen(
             item {
                 PermissionAlertBanner(
                     title = "Allow Exact Reminder Timing",
-                    subtitle = "Grant Alarms & Reminders permission for pinpoint-accurate morning, afternoon, and night alerts.",
+                    subtitle = "Grant Alarms & Reminders permission for pinpoint-accurate morning, afternoon, evening, and night alerts.",
                     actionLabel = "Allow Timing",
                     onActionClick = onRequestExactAlarmPermission,
                     testTag = "enable_exact_alarms_button"
@@ -154,9 +184,17 @@ fun TodayScreen(
 
         if (state.medicines.isEmpty()) {
             item {
-                EmptyTimetableCard(onAddMedicine = onAddMedicine)
+                TodaysNextDoseEmptyCard(userProfile = state.userProfile)
             }
         } else {
+            item {
+                TodaysNextDoseActiveCard(
+                    nextDose = nextDose,
+                    allDosesCount = state.todayDoses.size,
+                    onMarkTaken = { dose -> onToggleDoseTaken(dose) },
+                    onEditMedicine = onEditMedicine
+                )
+            }
             item {
                 SlotFilterRow(
                     selectedSlot = state.selectedFilter,
@@ -301,16 +339,10 @@ private fun AdherenceHeroCard(
                     modifier = Modifier.size(72.dp)
                 ) {
                     CircularProgressIndicator(
-                        progress = { 1f },
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f),
-                        strokeWidth = 7.dp,
-                        strokeCap = StrokeCap.Round
-                    )
-                    CircularProgressIndicator(
                         progress = { animatedProgress },
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.onPrimary,
+                        trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f),
                         strokeWidth = 7.dp,
                         strokeCap = StrokeCap.Round
                     )
@@ -645,7 +677,7 @@ private fun DoseScheduleCard(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = item.medicine.mealRelationEnum().shortTag,
+                                text = item.mealRelation.shortTag,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -687,15 +719,133 @@ private fun DoseScheduleCard(
 }
 
 @Composable
-private fun EmptyTimetableCard(onAddMedicine: () -> Unit) {
+private fun TodaysNextDoseActiveCard(
+    nextDose: ScheduledDoseItem?,
+    allDosesCount: Int,
+    onMarkTaken: (ScheduledDoseItem) -> Unit,
+    onEditMedicine: (Medicine) -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+        tonalElevation = 2.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("todays_next_dose_card")
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Alarm,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Today's Next Dose",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (nextDose != null) {
+                    val slotStyle = rememberSlotVisualStyle(nextDose.slot)
+                    Surface(
+                        color = slotStyle.container,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            text = "${nextDose.slot.displayName} • ${nextDose.formattedTime}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = slotStyle.accent,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (nextDose != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onEditMedicine(nextDose.medicine) },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = nextDose.medicine.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${nextDose.medicine.dosage} • ${nextDose.mealRelation.displayName}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = { onMarkTaken(nextDose) },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("next_dose_take_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Take Now", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = SuccessGreen,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = if (allDosesCount > 0)
+                            "All scheduled doses for today are complete."
+                        else
+                            "No active doses scheduled for today.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodaysNextDoseEmptyCard(userProfile: com.example.model.UserProfile) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("todays_next_dose_card")
     ) {
         Column(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Image(
@@ -704,38 +854,104 @@ private fun EmptyTimetableCard(onAddMedicine: () -> Unit) {
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(170.dp)
+                    .height(165.dp)
                     .clip(RoundedCornerShape(18.dp))
             )
             Spacer(modifier = Modifier.height(18.dp))
-            Text(
-                text = "Create Your Medicine Timetable",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Add your medicines and set Morning, Afternoon, or Night reminder times with notification alerts.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(18.dp))
-            OutlinedButton(
-                onClick = onAddMedicine,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .minimumInteractiveComponentSize()
-                    .testTag("empty_add_medicine_button")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Alarm,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Today's Next Dose",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "No Dose Yet",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Your next Morning, Afternoon, Evening, or Night medicine alert will appear here once you add your timetable below.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val slotsWithTimes = listOf(
+                    TimeSlot.MORNING to com.example.model.formatTime12h(
+                        userProfile.morningHour,
+                        userProfile.morningMinute
+                    ),
+                    TimeSlot.AFTERNOON to com.example.model.formatTime12h(
+                        userProfile.afternoonHour,
+                        userProfile.afternoonMinute
+                    ),
+                    TimeSlot.EVENING to com.example.model.formatTime12h(
+                        userProfile.eveningHour,
+                        userProfile.eveningMinute
+                    ),
+                    TimeSlot.NIGHT to com.example.model.formatTime12h(
+                        userProfile.nightHour,
+                        userProfile.nightMinute
+                    )
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Add First Medicine", style = MaterialTheme.typography.labelLarge)
+                slotsWithTimes.forEach { (slot, timeLabel) ->
+                    val style = rememberSlotVisualStyle(slot)
+                    Surface(
+                        color = style.container,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = style.icon,
+                                contentDescription = slot.displayName,
+                                tint = style.accent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = slot.displayName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = style.accent,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = timeLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
             }
         }
     }

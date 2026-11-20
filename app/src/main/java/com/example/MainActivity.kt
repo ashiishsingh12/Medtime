@@ -435,10 +435,6 @@ fun MedTimeMainApp() {
                                             onEditMedicine = { med ->
                                                 editingMedicine = med
                                                 showEditorSheet = true
-                                            },
-                                            onAddMedicine = {
-                                                editingMedicine = null
-                                                showEditorSheet = true
                                             }
                                         )
                                     }
@@ -465,7 +461,7 @@ fun MedTimeMainApp() {
                                                         medicineId = med.id,
                                                         medicineName = med.name,
                                                         dosage = med.dosage,
-                                                        mealRelation = med.mealRelationEnum(),
+                                                        mealRelation = med.mealRelationFor(previewSlot),
                                                         slot = previewSlot,
                                                         hour = med.hourFor(previewSlot),
                                                         minute = med.minuteFor(previewSlot),
@@ -517,13 +513,15 @@ fun MedTimeMainApp() {
                                         canScheduleExactAlarms = canScheduleExactAlarms,
                                         isSaving = isSaving,
                                         onDismiss = { showSettingsDialog = false },
-                                        onSaveSettings = { name, mH, mM, aH, aM, nH, nM ->
+                                        onSaveSettings = { name, mH, mM, aH, aM, eH, eM, nH, nM ->
                                             viewModel.updateProfileAndDefaults(
                                                 displayName = name,
                                                 morningHour = mH,
                                                 morningMinute = mM,
                                                 afternoonHour = aH,
                                                 afternoonMinute = aM,
+                                                eveningHour = eH,
+                                                eveningMinute = eM,
                                                 nightHour = nH,
                                                 nightMinute = nM
                                             ) {

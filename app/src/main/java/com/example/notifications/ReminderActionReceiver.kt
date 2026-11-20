@@ -57,6 +57,8 @@ class ReminderActionReceiver : BroadcastReceiver() {
                             morningMinute = if (slot == TimeSlot.MORNING) minute else 0,
                             afternoonHour = if (slot == TimeSlot.AFTERNOON) hour else 13,
                             afternoonMinute = if (slot == TimeSlot.AFTERNOON) minute else 30,
+                            eveningHour = if (slot == TimeSlot.EVENING) hour else 18,
+                            eveningMinute = if (slot == TimeSlot.EVENING) minute else 0,
                             nightHour = if (slot == TimeSlot.NIGHT) hour else 21,
                             nightMinute = if (slot == TimeSlot.NIGHT) minute else 0
                         )

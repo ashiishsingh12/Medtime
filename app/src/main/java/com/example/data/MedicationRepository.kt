@@ -45,11 +45,14 @@ class MedicationRepository(private val dao: MedicationDao) {
         morningMinute: Int,
         afternoonHour: Int,
         afternoonMinute: Int,
+        eveningHour: Int,
+        eveningMinute: Int,
         nightHour: Int,
         nightMinute: Int
     ): Result<Unit> = try {
         require(morningHour in 0..23 && morningMinute in 0..59) { "Invalid morning time" }
         require(afternoonHour in 0..23 && afternoonMinute in 0..59) { "Invalid afternoon time" }
+        require(eveningHour in 0..23 && eveningMinute in 0..59) { "Invalid evening time" }
         require(nightHour in 0..23 && nightMinute in 0..59) { "Invalid night time" }
         val safeName = displayName.trim().ifBlank { "Patient" }.take(80)
         dao.upsertProfile(
@@ -60,6 +63,8 @@ class MedicationRepository(private val dao: MedicationDao) {
                 morningMinute = morningMinute,
                 afternoonHour = afternoonHour,
                 afternoonMinute = afternoonMinute,
+                eveningHour = eveningHour,
+                eveningMinute = eveningMinute,
                 nightHour = nightHour,
                 nightMinute = nightMinute
             )
@@ -87,13 +92,23 @@ class MedicationRepository(private val dao: MedicationDao) {
         require(trimmedDosage.isNotEmpty() && trimmedDosage.length <= 40) {
             "Dosage must be between 1 and 40 characters."
         }
-        require(input.morningEnabled || input.afternoonEnabled || input.nightEnabled) {
-            "Select at least one time slot (Morning, Afternoon, or Night)."
+        require(
+            input.morningEnabled || input.afternoonEnabled ||
+                input.eveningEnabled || input.nightEnabled
+        ) {
+            "Select at least one time slot (Morning, Afternoon, Evening, or Night)."
         }
 
         val now = System.currentTimeMillis()
         val targetId = if (medicineId.isNullOrBlank()) UUID.randomUUID().toString() else medicineId
         val existing = if (!medicineId.isNullOrBlank()) dao.getMedicineById(medicineId) else null
+
+        val fallbackMeal = when {
+            input.morningEnabled -> input.morningMealRelation
+            input.afternoonEnabled -> input.afternoonMealRelation
+            input.eveningEnabled -> input.eveningMealRelation
+            else -> input.nightMealRelation
+        }
 
         dao.upsertMedicine(
             MedicineEntity(
@@ -101,17 +116,24 @@ class MedicationRepository(private val dao: MedicationDao) {
                 name = trimmedName,
                 dosage = trimmedDosage,
                 form = input.form.name,
-                mealRelation = input.mealRelation.name,
+                mealRelation = fallbackMeal.name,
                 notes = trimmedNotes,
                 morningEnabled = input.morningEnabled,
                 morningHour = input.morningHour.coerceIn(0, 23),
                 morningMinute = input.morningMinute.coerceIn(0, 59),
+                morningMealRelation = input.morningMealRelation.name,
                 afternoonEnabled = input.afternoonEnabled,
                 afternoonHour = input.afternoonHour.coerceIn(0, 23),
                 afternoonMinute = input.afternoonMinute.coerceIn(0, 59),
+                afternoonMealRelation = input.afternoonMealRelation.name,
+                eveningEnabled = input.eveningEnabled,
+                eveningHour = input.eveningHour.coerceIn(0, 23),
+                eveningMinute = input.eveningMinute.coerceIn(0, 59),
+                eveningMealRelation = input.eveningMealRelation.name,
                 nightEnabled = input.nightEnabled,
                 nightHour = input.nightHour.coerceIn(0, 23),
                 nightMinute = input.nightMinute.coerceIn(0, 59),
+                nightMealRelation = input.nightMealRelation.name,
                 active = input.active,
                 createdAtMillis = existing?.createdAtMillis ?: now,
                 updatedAtMillis = now

@@ -242,8 +242,8 @@ class MedTimeViewModel(
             _isSaving.value = false
             result.onSuccess {
                 _events.tryEmit(
-                    if (medicineId == null) "Added ${input.name.trim()} to timetable"
-                    else "Updated ${input.name.trim()}"
+                    if (medicineId == null) "Saved ${input.name.trim()} & daily reminders scheduled"
+                    else "Updated ${input.name.trim()} & reminder times"
                 )
                 onSaved()
             }.onFailure { err ->
@@ -283,6 +283,8 @@ class MedTimeViewModel(
         morningMinute: Int,
         afternoonHour: Int,
         afternoonMinute: Int,
+        eveningHour: Int,
+        eveningMinute: Int,
         nightHour: Int,
         nightMinute: Int,
         onUpdated: () -> Unit
@@ -295,6 +297,8 @@ class MedTimeViewModel(
                 morningMinute = morningMinute,
                 afternoonHour = afternoonHour,
                 afternoonMinute = afternoonMinute,
+                eveningHour = eveningHour,
+                eveningMinute = eveningMinute,
                 nightHour = nightHour,
                 nightMinute = nightMinute
             )

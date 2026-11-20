@@ -14,6 +14,8 @@ data class PatientProfileEntity(
     val morningMinute: Int = 0,
     val afternoonHour: Int = 13,
     val afternoonMinute: Int = 30,
+    val eveningHour: Int = 18,
+    val eveningMinute: Int = 0,
     val nightHour: Int = 21,
     val nightMinute: Int = 0
 ) {
@@ -23,6 +25,8 @@ data class PatientProfileEntity(
         morningMinute = morningMinute,
         afternoonHour = afternoonHour,
         afternoonMinute = afternoonMinute,
+        eveningHour = eveningHour,
+        eveningMinute = eveningMinute,
         nightHour = nightHour,
         nightMinute = nightMinute
     )
@@ -39,12 +43,19 @@ data class MedicineEntity(
     val morningEnabled: Boolean,
     val morningHour: Int,
     val morningMinute: Int,
+    val morningMealRelation: String = mealRelation,
     val afternoonEnabled: Boolean,
     val afternoonHour: Int,
     val afternoonMinute: Int,
+    val afternoonMealRelation: String = mealRelation,
+    val eveningEnabled: Boolean,
+    val eveningHour: Int,
+    val eveningMinute: Int,
+    val eveningMealRelation: String = mealRelation,
     val nightEnabled: Boolean,
     val nightHour: Int,
     val nightMinute: Int,
+    val nightMealRelation: String = mealRelation,
     val active: Boolean,
     val createdAtMillis: Long,
     val updatedAtMillis: Long
@@ -59,12 +70,19 @@ data class MedicineEntity(
         morningEnabled = morningEnabled,
         morningHour = morningHour,
         morningMinute = morningMinute,
+        morningMealRelation = morningMealRelation,
         afternoonEnabled = afternoonEnabled,
         afternoonHour = afternoonHour,
         afternoonMinute = afternoonMinute,
+        afternoonMealRelation = afternoonMealRelation,
+        eveningEnabled = eveningEnabled,
+        eveningHour = eveningHour,
+        eveningMinute = eveningMinute,
+        eveningMealRelation = eveningMealRelation,
         nightEnabled = nightEnabled,
         nightHour = nightHour,
         nightMinute = nightMinute,
+        nightMealRelation = nightMealRelation,
         active = active
     )
 }

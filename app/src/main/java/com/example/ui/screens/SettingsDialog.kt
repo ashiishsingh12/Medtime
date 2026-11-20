@@ -52,6 +52,8 @@ fun SettingsDialog(
         morningM: Int,
         afternoonH: Int,
         afternoonM: Int,
+        eveningH: Int,
+        eveningM: Int,
         nightH: Int,
         nightM: Int
     ) -> Unit,
@@ -63,6 +65,8 @@ fun SettingsDialog(
     var morningMinute by remember(userProfile) { mutableIntStateOf(userProfile.morningMinute) }
     var afternoonHour by remember(userProfile) { mutableIntStateOf(userProfile.afternoonHour) }
     var afternoonMinute by remember(userProfile) { mutableIntStateOf(userProfile.afternoonMinute) }
+    var eveningHour by remember(userProfile) { mutableIntStateOf(userProfile.eveningHour) }
+    var eveningMinute by remember(userProfile) { mutableIntStateOf(userProfile.eveningMinute) }
     var nightHour by remember(userProfile) { mutableIntStateOf(userProfile.nightHour) }
     var nightMinute by remember(userProfile) { mutableIntStateOf(userProfile.nightMinute) }
 
@@ -72,6 +76,7 @@ fun SettingsDialog(
         val (h, m) = when (slot) {
             TimeSlot.MORNING -> morningHour to morningMinute
             TimeSlot.AFTERNOON -> afternoonHour to afternoonMinute
+            TimeSlot.EVENING -> eveningHour to eveningMinute
             TimeSlot.NIGHT -> nightHour to nightMinute
         }
         MedTimePickerDialog(
@@ -88,6 +93,10 @@ fun SettingsDialog(
                     TimeSlot.AFTERNOON -> {
                         afternoonHour = newH
                         afternoonMinute = newM
+                    }
+                    TimeSlot.EVENING -> {
+                        eveningHour = newH
+                        eveningMinute = newM
                     }
                     TimeSlot.NIGHT -> {
                         nightHour = newH
@@ -145,6 +154,12 @@ fun SettingsDialog(
                     onClick = { activePickerSlot = TimeSlot.AFTERNOON }
                 )
                 DefaultTimeRow(
+                    slot = TimeSlot.EVENING,
+                    hour = eveningHour,
+                    minute = eveningMinute,
+                    onClick = { activePickerSlot = TimeSlot.EVENING }
+                )
+                DefaultTimeRow(
                     slot = TimeSlot.NIGHT,
                     hour = nightHour,
                     minute = nightMinute,
@@ -159,6 +174,8 @@ fun SettingsDialog(
                             morningMinute,
                             afternoonHour,
                             afternoonMinute,
+                            eveningHour,
+                            eveningMinute,
                             nightHour,
                             nightMinute
                         )

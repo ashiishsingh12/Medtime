@@ -72,7 +72,7 @@ fun MedicinesScreen(
             onDismissRequest = { pendingDelete = null },
             title = { Text("Remove ${medToDelete.name}?") },
             text = {
-                Text("This will stop its morning, afternoon, and night reminder alerts and remove it from your timetable.")
+                Text("This will stop its morning, afternoon, evening, and night reminder alerts and remove it from your timetable.")
             },
             confirmButton = {
                 TextButton(
@@ -149,7 +149,7 @@ fun MedicinesScreen(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Tap Add above to create a morning, afternoon, or night schedule with alert notifications.",
+                            text = "Tap Add above to create a morning, afternoon, evening, or night schedule with alert notifications.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -198,7 +198,7 @@ fun MedicinesScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "${medicine.dosage} • ${medicine.formEnum().displayName} • ${medicine.mealRelationEnum().displayName}",
+                                    text = "${medicine.dosage} • ${medicine.formEnum().displayName}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -225,7 +225,8 @@ fun MedicinesScreen(
                                         timeLabel = formatTime12h(
                                             medicine.hourFor(slot),
                                             medicine.minuteFor(slot)
-                                        )
+                                        ),
+                                        mealLabel = medicine.mealRelationFor(slot).shortTag
                                     )
                                 }
                             }

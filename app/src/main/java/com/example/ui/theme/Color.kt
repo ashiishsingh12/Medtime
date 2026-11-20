@@ -56,6 +56,10 @@ val AfternoonAccent = Color(0xFFC25335)
 val AfternoonSurfaceLight = Color(0xFFFFEDE6)
 val AfternoonSurfaceDark = Color(0xFF361D15)
 
+val EveningAccent = Color(0xFF9C4A68)
+val EveningSurfaceLight = Color(0xFFFDEBF1)
+val EveningSurfaceDark = Color(0xFF361D28)
+
 val NightAccent = Color(0xFF3B4F8A)
 val NightSurfaceLight = Color(0xFFEAF0FF)
 val NightSurfaceDark = Color(0xFF1B243E)

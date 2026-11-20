@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.LocalDrink
 import androidx.compose.material.icons.filled.Medication
+import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbSunny
@@ -40,6 +41,9 @@ import com.example.model.TimeSlot
 import com.example.ui.theme.AfternoonAccent
 import com.example.ui.theme.AfternoonSurfaceDark
 import com.example.ui.theme.AfternoonSurfaceLight
+import com.example.ui.theme.EveningAccent
+import com.example.ui.theme.EveningSurfaceDark
+import com.example.ui.theme.EveningSurfaceLight
 import com.example.ui.theme.MorningAccent
 import com.example.ui.theme.MorningSurfaceDark
 import com.example.ui.theme.MorningSurfaceLight
@@ -67,6 +71,11 @@ fun rememberSlotVisualStyle(slot: TimeSlot): SlotVisualStyle {
             container = if (dark) AfternoonSurfaceDark else AfternoonSurfaceLight,
             icon = Icons.Filled.WbSunny
         )
+        TimeSlot.EVENING -> SlotVisualStyle(
+            accent = EveningAccent,
+            container = if (dark) EveningSurfaceDark else EveningSurfaceLight,
+            icon = Icons.Filled.NightsStay
+        )
         TimeSlot.NIGHT -> SlotVisualStyle(
             accent = NightAccent,
             container = if (dark) NightSurfaceDark else NightSurfaceLight,
@@ -88,6 +97,7 @@ fun MedicineForm.iconVector(): ImageVector = when (this) {
 fun SlotChipBadge(
     slot: TimeSlot,
     timeLabel: String,
+    mealLabel: String? = null,
     modifier: Modifier = Modifier
 ) {
     val style = rememberSlotVisualStyle(slot)
@@ -108,7 +118,8 @@ fun SlotChipBadge(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = "${slot.displayName} • $timeLabel",
+                text = if (mealLabel.isNullOrBlank()) "${slot.displayName} • $timeLabel"
+                else "${slot.displayName} • $timeLabel • $mealLabel",
                 style = MaterialTheme.typography.labelSmall,
                 color = style.accent
             )

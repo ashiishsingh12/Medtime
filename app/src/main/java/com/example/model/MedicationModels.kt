@@ -12,6 +12,7 @@ enum class TimeSlot(
 ) {
     MORNING("Morning", "Subah", 8, 0),
     AFTERNOON("Afternoon", "Dopahar", 13, 30),
+    EVENING("Evening", "Shaam", 18, 0),
     NIGHT("Night", "Raat", 21, 0);
 
     companion object {
@@ -27,6 +28,23 @@ enum class MedicineForm(val displayName: String) {
     INJECTION("Injection"),
     DROPS("Drops"),
     INHALER("Inhaler");
+
+    fun dosagePresets(): List<String> = when (this) {
+        TABLET -> listOf("1/4 tablet", "1/2 tablet", "1 tablet", "1.5 tablets", "2 tablets")
+        CAPSULE -> listOf("1 capsule", "2 capsules", "1/2 capsule")
+        SYRUP -> listOf("1 ml", "2 ml", "2.5 ml", "5 ml (1 tsp)", "10 ml (2 tsp)", "15 ml")
+        INJECTION -> listOf(
+            "10 units (Insulin)",
+            "20 units (Insulin)",
+            "0.5 ml (Vaccine / IM)",
+            "1 ml (IM / IV)",
+            "2 ml (IM / IV)",
+            "1 vial",
+            "1 ampoule"
+        )
+        DROPS -> listOf("1 drop", "2 drops", "3 drops", "4 drops")
+        INHALER -> listOf("1 puff", "2 puffs", "1 spray", "2 sprays")
+    }
 
     companion object {
         fun fromRaw(raw: String?): MedicineForm =
@@ -62,6 +80,8 @@ data class UserProfile(
     val morningMinute: Int = 0,
     val afternoonHour: Int = 13,
     val afternoonMinute: Int = 30,
+    val eveningHour: Int = 18,
+    val eveningMinute: Int = 0,
     val nightHour: Int = 21,
     val nightMinute: Int = 0
 )
@@ -76,32 +96,49 @@ data class Medicine(
     val morningEnabled: Boolean = true,
     val morningHour: Int = 8,
     val morningMinute: Int = 0,
+    val morningMealRelation: String = mealRelation,
     val afternoonEnabled: Boolean = false,
     val afternoonHour: Int = 13,
     val afternoonMinute: Int = 30,
+    val afternoonMealRelation: String = mealRelation,
+    val eveningEnabled: Boolean = false,
+    val eveningHour: Int = 18,
+    val eveningMinute: Int = 0,
+    val eveningMealRelation: String = mealRelation,
     val nightEnabled: Boolean = false,
     val nightHour: Int = 21,
     val nightMinute: Int = 0,
+    val nightMealRelation: String = mealRelation,
     val active: Boolean = true
 ) {
     fun formEnum(): MedicineForm = MedicineForm.fromRaw(form)
     fun mealRelationEnum(): MealRelation = MealRelation.fromRaw(mealRelation)
 
+    fun mealRelationFor(slot: TimeSlot): MealRelation = when (slot) {
+        TimeSlot.MORNING -> MealRelation.fromRaw(morningMealRelation)
+        TimeSlot.AFTERNOON -> MealRelation.fromRaw(afternoonMealRelation)
+        TimeSlot.EVENING -> MealRelation.fromRaw(eveningMealRelation)
+        TimeSlot.NIGHT -> MealRelation.fromRaw(nightMealRelation)
+    }
+
     fun isSlotEnabled(slot: TimeSlot): Boolean = when (slot) {
         TimeSlot.MORNING -> morningEnabled
         TimeSlot.AFTERNOON -> afternoonEnabled
+        TimeSlot.EVENING -> eveningEnabled
         TimeSlot.NIGHT -> nightEnabled
     }
 
     fun hourFor(slot: TimeSlot): Int = when (slot) {
         TimeSlot.MORNING -> morningHour
         TimeSlot.AFTERNOON -> afternoonHour
+        TimeSlot.EVENING -> eveningHour
         TimeSlot.NIGHT -> nightHour
     }
 
     fun minuteFor(slot: TimeSlot): Int = when (slot) {
         TimeSlot.MORNING -> morningMinute
         TimeSlot.AFTERNOON -> afternoonMinute
+        TimeSlot.EVENING -> eveningMinute
         TimeSlot.NIGHT -> nightMinute
     }
 
@@ -127,17 +164,24 @@ data class MedicineInput(
     val name: String,
     val dosage: String,
     val form: MedicineForm,
-    val mealRelation: MealRelation,
+    val mealRelation: MealRelation = MealRelation.AFTER_MEAL,
     val notes: String,
     val morningEnabled: Boolean,
     val morningHour: Int,
     val morningMinute: Int,
+    val morningMealRelation: MealRelation = mealRelation,
     val afternoonEnabled: Boolean,
     val afternoonHour: Int,
     val afternoonMinute: Int,
+    val afternoonMealRelation: MealRelation = mealRelation,
+    val eveningEnabled: Boolean,
+    val eveningHour: Int,
+    val eveningMinute: Int,
+    val eveningMealRelation: MealRelation = mealRelation,
     val nightEnabled: Boolean,
     val nightHour: Int,
     val nightMinute: Int,
+    val nightMealRelation: MealRelation = mealRelation,
     val active: Boolean = true
 )
 
@@ -156,6 +200,9 @@ data class ScheduledDoseItem(
 
     val formattedTime: String
         get() = formatTime12h(hour, minute)
+
+    val mealRelation: MealRelation
+        get() = medicine.mealRelationFor(slot)
 }
 
 data class DayAdherenceSummary(
