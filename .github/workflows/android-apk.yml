@@ -23,18 +23,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Find project and Create debug keystore
+      - name: Create debug keystore
         run: |
-          ls -la
-          find . -name "gradlew" -type f
           keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
           cp debug.keystore app/debug.keystore || true
-          find . -name "debug.keystore" -type f
+          ls -la
 
       - name: Build APK
-        run: |
-          chmod +x $(find . -name "gradlew" | head -n 1)
-          $(find . -name "gradlew" | head -n 1) assembleDebug --stacktrace
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
