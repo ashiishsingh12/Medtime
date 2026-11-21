@@ -1,13 +1,14 @@
-name: Build Android APK (Capacitor)
+name: Build Android APK
 
 on:
-  workflow_dispatch:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,21 +24,31 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Install dependencies & build web app
+      - name: Build web assets
         run: |
-          npm install
-          npm run build
+          if [ -f "package.json" ]; then
+            npm install
+            npm run build
+          else
+            mkdir -p dist
+            cp -r *.html *.css *.js assets/ dist/ 2>/dev/null || true
+          fi
 
-      - name: Initialize Capacitor & Add Android
+      - name: Wrap with Capacitor and build APK
         run: |
+          npm init -y 2>/dev/null || true
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init "MyApp" "com.example.myapp" --web-dir=dist || true
-          npx cap add android || true
+
+          WEB_DIR="dist"
+          if [ -d "build" ] && [ ! -d "dist" ]; then
+            WEB_DIR="build"
+          fi
+
+          npx cap init "MyApp" "com.example.myapp" --web-dir="$WEB_DIR"
+          npx cap add android
           npx cap sync android
 
-      - name: Build Debug APK
-        working-directory: android
-        run: |
+          cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
