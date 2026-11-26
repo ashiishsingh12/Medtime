@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "831360938483",
+    "project_id": "medtym-b90ee",
+    "storage_bucket": "medtym-b90ee.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:831360938483:android:0b323dbd59c79e74552286",
+        "android_client_info": {
+          "package_name": "com.aistudio.medtime.k7x9qm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxwXhaWOFbtFI-SeSjeLE_QosytH3k81Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
