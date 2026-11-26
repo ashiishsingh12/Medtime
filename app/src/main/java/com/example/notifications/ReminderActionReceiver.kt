@@ -22,6 +22,7 @@ class ReminderActionReceiver : BroadcastReceiver() {
         }
 
         val medicineId = intent.getStringExtra(ReminderReceiver.EXTRA_MEDICINE_ID) ?: return
+        val memberName = intent.getStringExtra(ReminderReceiver.EXTRA_MEMBER_NAME)?.ifBlank { "Self" } ?: "Self"
         val medicineName = intent.getStringExtra(ReminderReceiver.EXTRA_MEDICINE_NAME) ?: "Medicine"
         val dosage = intent.getStringExtra(ReminderReceiver.EXTRA_DOSAGE) ?: "1 dose"
         val mealRelation = MealRelation.fromRaw(intent.getStringExtra(ReminderReceiver.EXTRA_MEAL_RELATION))
@@ -34,6 +35,7 @@ class ReminderActionReceiver : BroadcastReceiver() {
                 MedicationReminderScheduler.scheduleSnoozeAlarm(
                     context = context,
                     medicineId = medicineId,
+                    memberName = memberName,
                     medicineName = medicineName,
                     dosage = dosage,
                     mealRelation = mealRelation,
@@ -66,7 +68,8 @@ class ReminderActionReceiver : BroadcastReceiver() {
                             medicine = placeholderMed,
                             slot = slot,
                             dateKey = todayDateKey(),
-                            status = DoseStatus.TAKEN
+                            status = DoseStatus.TAKEN,
+                            memberName = memberName
                         )
                     } finally {
                         pendingResult.finish()

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">MedTime</string>
+    <string name="app_name">MedTym</string>
     <string name="nav_today">Today</string>
     <string name="nav_medicines">Timetable</string>
     <string name="nav_history">History</string>

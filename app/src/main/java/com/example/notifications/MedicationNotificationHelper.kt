@@ -61,6 +61,7 @@ object MedicationNotificationHelper {
     fun showReminderNotification(
         context: Context,
         medicineId: String,
+        memberName: String = "Self",
         medicineName: String,
         dosage: String,
         mealRelation: MealRelation,
@@ -88,6 +89,7 @@ object MedicationNotificationHelper {
         val markTakenIntent = Intent(context, ReminderActionReceiver::class.java).apply {
             action = ReminderActionReceiver.ACTION_MARK_TAKEN
             putExtra(ReminderReceiver.EXTRA_MEDICINE_ID, medicineId)
+            putExtra(ReminderReceiver.EXTRA_MEMBER_NAME, memberName)
             putExtra(ReminderReceiver.EXTRA_MEDICINE_NAME, medicineName)
             putExtra(ReminderReceiver.EXTRA_DOSAGE, dosage)
             putExtra(ReminderReceiver.EXTRA_SLOT, slot.name)
@@ -105,6 +107,7 @@ object MedicationNotificationHelper {
         val snoozeIntent = Intent(context, ReminderActionReceiver::class.java).apply {
             action = ReminderActionReceiver.ACTION_SNOOZE
             putExtra(ReminderReceiver.EXTRA_MEDICINE_ID, medicineId)
+            putExtra(ReminderReceiver.EXTRA_MEMBER_NAME, memberName)
             putExtra(ReminderReceiver.EXTRA_MEDICINE_NAME, medicineName)
             putExtra(ReminderReceiver.EXTRA_DOSAGE, dosage)
             putExtra(ReminderReceiver.EXTRA_MEAL_RELATION, mealRelation.name)
@@ -121,7 +124,8 @@ object MedicationNotificationHelper {
         )
 
         val prefix = if (isTestPreview) "Test Alert • " else ""
-        val title = "$prefix${slot.displayName} Medicine: $medicineName"
+        val whoSuffix = if (memberName.equals("Self", ignoreCase = true)) "" else " (For $memberName)"
+        val title = "$prefix${slot.displayName} Medicine$whoSuffix: $medicineName"
         val body = "$dosage • ${mealRelation.displayName} • Scheduled $timeLabel"
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -130,7 +134,7 @@ object MedicationNotificationHelper {
             .setContentText(body)
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("$body\nTap 'Mark Taken' once you take your dose, or snooze for 10 minutes.")
+                    .bigText("$body\nTap 'Mark Taken' once taken, or snooze for 10 minutes.")
             )
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)

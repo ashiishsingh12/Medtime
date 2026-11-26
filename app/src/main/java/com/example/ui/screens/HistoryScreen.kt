@@ -50,6 +50,7 @@ import java.util.Locale
 fun HistoryScreen(
     weeklySummary: List<DayAdherenceSummary>,
     doseLogs: List<DoseLog>,
+    showMemberBadge: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val groupedLogs = remember(doseLogs) {
@@ -125,7 +126,10 @@ fun HistoryScreen(
                     )
                 }
                 items(items = logsForDate, key = { it.id.ifBlank { "${it.dateKey}_${it.slot}_${it.medicineId}" } }) { log ->
-                    DoseHistoryRow(log = log)
+                    DoseHistoryRow(
+                        log = log,
+                        showMemberBadge = showMemberBadge
+                    )
                 }
             }
         }
@@ -203,7 +207,10 @@ private fun WeeklyAdherenceCard(weeklySummary: List<DayAdherenceSummary>) {
 }
 
 @Composable
-private fun DoseHistoryRow(log: DoseLog) {
+private fun DoseHistoryRow(
+    log: DoseLog,
+    showMemberBadge: Boolean
+) {
     val slot = log.slotEnum()
     val slotStyle = rememberSlotVisualStyle(slot)
     val isTaken = log.statusEnum() == DoseStatus.TAKEN
@@ -254,8 +261,9 @@ private fun DoseHistoryRow(log: DoseLog) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
+                val memberPrefix = if (showMemberBadge) "${log.memberName} • " else ""
                 Text(
-                    text = "${log.dosage} • ${slot.displayName} (${log.scheduledTimeLabel})",
+                    text = "$memberPrefix${log.dosage} • ${slot.displayName} (${log.scheduledTimeLabel})",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

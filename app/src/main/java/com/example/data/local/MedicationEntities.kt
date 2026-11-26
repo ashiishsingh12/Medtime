@@ -1,10 +1,69 @@
 package com.example.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.model.DoseLog
+import com.example.model.FamilyMember
 import com.example.model.Medicine
+import com.example.model.RecurrenceEndType
+import com.example.model.RecurrenceFrequency
+import com.example.model.UserAccount
 import com.example.model.UserProfile
+import com.example.model.UserRole
+
+@Entity(
+    tableName = "user_accounts",
+    indices = [
+        Index(value = ["email"], unique = true),
+        Index(value = ["phone"], unique = true)
+    ]
+)
+data class UserAccountEntity(
+    @PrimaryKey val id: String,
+    val firstName: String,
+    val lastName: String,
+    val gender: String,
+    val dob: String,
+    val state: String,
+    val city: String,
+    val email: String,
+    val phone: String,
+    val passwordSalt: String,
+    val passwordHash: String,
+    val role: String = UserRole.USER.name,
+    val createdAtMillis: Long
+) {
+    fun toDomain(): UserAccount = UserAccount(
+        id = id,
+        firstName = firstName,
+        lastName = lastName,
+        gender = gender,
+        dob = dob,
+        state = state,
+        city = city,
+        email = email,
+        phone = phone,
+        role = UserRole.fromRaw(role),
+        createdAtMillis = createdAtMillis
+    )
+}
+
+@Entity(tableName = "family_members")
+data class FamilyMemberEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val relation: String,
+    val sortOrder: Int = 0,
+    val isDefault: Boolean = false
+) {
+    fun toDomain(): FamilyMember = FamilyMember(
+        id = id,
+        name = name,
+        relation = relation,
+        isDefault = isDefault
+    )
+}
 
 @Entity(tableName = "patient_profile")
 data class PatientProfileEntity(
@@ -35,6 +94,7 @@ data class PatientProfileEntity(
 @Entity(tableName = "medicines")
 data class MedicineEntity(
     @PrimaryKey val id: String,
+    val memberId: String = FamilyMember.SELF_ID,
     val name: String,
     val dosage: String,
     val form: String,
@@ -56,12 +116,20 @@ data class MedicineEntity(
     val nightHour: Int,
     val nightMinute: Int,
     val nightMealRelation: String = mealRelation,
+    val startDateKey: String? = null,
+    val endDateKey: String? = null,
+    val recurrenceFrequency: String = RecurrenceFrequency.DAILY.name,
+    val recurrenceInterval: Int = 1,
+    val recurrenceDays: String = "",
+    val recurrenceEndType: String = RecurrenceEndType.NEVER.name,
+    val recurrenceCount: Int? = null,
     val active: Boolean,
     val createdAtMillis: Long,
     val updatedAtMillis: Long
 ) {
     fun toDomain(): Medicine = Medicine(
         id = id,
+        memberId = memberId,
         name = name,
         dosage = dosage,
         form = form,
@@ -83,6 +151,13 @@ data class MedicineEntity(
         nightHour = nightHour,
         nightMinute = nightMinute,
         nightMealRelation = nightMealRelation,
+        startDateKey = startDateKey,
+        endDateKey = endDateKey,
+        recurrenceFrequency = recurrenceFrequency,
+        recurrenceInterval = recurrenceInterval,
+        recurrenceDays = recurrenceDays,
+        recurrenceEndType = recurrenceEndType,
+        recurrenceCount = recurrenceCount,
         active = active
     )
 }
@@ -91,6 +166,8 @@ data class MedicineEntity(
 data class DoseLogEntity(
     @PrimaryKey val id: String,
     val medicineId: String,
+    val memberId: String = FamilyMember.SELF_ID,
+    val memberName: String = "Self",
     val medicineName: String,
     val dosage: String,
     val dateKey: String,
@@ -102,6 +179,8 @@ data class DoseLogEntity(
     fun toDomain(): DoseLog = DoseLog(
         id = id,
         medicineId = medicineId,
+        memberId = memberId,
+        memberName = memberName,
         medicineName = medicineName,
         dosage = dosage,
         dateKey = dateKey,

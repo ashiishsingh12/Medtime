@@ -1,5 +1,5 @@
 {
-  "name": "MedTime",
+  "name": "MedTym",
   "description": "Patient medicine timetable and reminder app with morning, afternoon, and night schedules and notification alerts.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

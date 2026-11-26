@@ -22,18 +22,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EventRepeat
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -70,13 +72,21 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.model.FamilyMember
 import com.example.model.MealRelation
 import com.example.model.Medicine
 import com.example.model.MedicineForm
 import com.example.model.MedicineInput
+import com.example.model.RecurrenceEndType
+import com.example.model.RecurrenceFrequency
+import com.example.model.RecurrenceRule
 import com.example.model.TimeSlot
 import com.example.model.UserProfile
+import com.example.model.dayOfWeekForDateKey
+import com.example.model.formatRecurrenceSummary
 import com.example.model.formatTime12h
+import com.example.model.todayDateKey
+import com.example.ui.components.GoogleCalendarRecurrenceDialog
 import com.example.ui.components.MedTimePickerDialog
 import com.example.ui.components.iconVector
 import com.example.ui.components.rememberSlotVisualStyle
@@ -86,6 +96,8 @@ import com.example.ui.components.rememberSlotVisualStyle
 fun MedicineEditorSheet(
     existingMedicine: Medicine?,
     userProfile: UserProfile,
+    familyMembers: List<FamilyMember>,
+    defaultMemberId: String,
     isSaving: Boolean,
     onDismiss: () -> Unit,
     onSave: (medicineId: String?, input: MedicineInput) -> Unit
@@ -94,18 +106,28 @@ fun MedicineEditorSheet(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val initialForm = existingMedicine?.formEnum() ?: MedicineForm.TABLET
+    val initialMemberId = existingMedicine?.memberId?.takeIf { id -> familyMembers.any { it.id == id } }
+        ?: defaultMemberId.takeIf { id -> familyMembers.any { it.id == id } }
+        ?: FamilyMember.SELF_ID
+    val initialIsCustomForm = existingMedicine?.isCustomForm() == true
+    val initialForm = existingMedicine?.formIconCategory() ?: MedicineForm.TABLET
+    val initialCustomFormText = if (initialIsCustomForm) existingMedicine!!.formDisplayName() else ""
+    val initialTypeLabel = if (initialIsCustomForm) initialCustomFormText else initialForm.displayName
     val initialDosage = existingMedicine?.dosage ?: ""
-    val initialIsCustom = existingMedicine != null &&
+    val initialIsCustomDosage = existingMedicine != null &&
         initialDosage.isNotBlank() &&
-        initialDosage !in initialForm.dosagePresets()
+        initialDosage !in MedicineForm.dosagePresetsForType(initialTypeLabel)
 
+    var selectedMemberId by remember(existingMedicine, defaultMemberId) { mutableStateOf(initialMemberId) }
     var form by remember(existingMedicine) { mutableStateOf(initialForm) }
+    var isCustomForm by remember(existingMedicine) { mutableStateOf(initialIsCustomForm) }
+    var customFormText by remember(existingMedicine) { mutableStateOf(initialCustomFormText) }
     var name by remember(existingMedicine) { mutableStateOf(existingMedicine?.name ?: "") }
     var dosage by remember(existingMedicine) { mutableStateOf(initialDosage) }
-    var isCustomDosage by remember(existingMedicine) { mutableStateOf(initialIsCustom) }
+    var isCustomDosage by remember(existingMedicine) { mutableStateOf(initialIsCustomDosage) }
     var notes by remember(existingMedicine) { mutableStateOf(existingMedicine?.notes ?: "") }
 
+    var memberMenuExpanded by remember { mutableStateOf(false) }
     var formMenuExpanded by remember { mutableStateOf(false) }
     var dosageMenuExpanded by remember { mutableStateOf(false) }
 
@@ -161,16 +183,53 @@ fun MedicineEditorSheet(
         mutableStateOf(existingMedicine?.mealRelationFor(TimeSlot.NIGHT) ?: MealRelation.AFTER_MEAL)
     }
 
+    val initialRecurrenceRule = remember(existingMedicine) {
+        existingMedicine?.recurrenceRule()?.let { rule ->
+            if (rule.startDateKey.isNullOrBlank()) {
+                rule.copy(startDateKey = todayDateKey())
+            } else {
+                rule
+            }
+        } ?: RecurrenceRule(
+            frequency = RecurrenceFrequency.DAILY,
+            interval = 1,
+            endType = RecurrenceEndType.NEVER,
+            startDateKey = todayDateKey()
+        )
+    }
+    var recurrenceRule by remember(existingMedicine) { mutableStateOf(initialRecurrenceRule) }
+    var showCustomRecurrenceDialog by remember { mutableStateOf(false) }
+
     var validationError by remember { mutableStateOf<String?>(null) }
     var activeTimePickerSlot by remember { mutableStateOf<TimeSlot?>(null) }
 
-    val dependentDosageOptions = remember(form) { form.dosagePresets() }
+    val activeTypeLabel = if (isCustomForm) customFormText.trim() else form.displayName
+    val activeIconCategory = if (isCustomForm) MedicineForm.inferIconCategory(customFormText) else form
+    val dependentDosageOptions = remember(isCustomForm, customFormText, form) {
+        MedicineForm.dosagePresetsForType(activeTypeLabel)
+    }
 
     val activeSlotLabels = buildList {
         if (morningEnabled) add("Morning ${formatTime12h(morningHour, morningMinute)}")
         if (afternoonEnabled) add("Afternoon ${formatTime12h(afternoonHour, afternoonMinute)}")
         if (eveningEnabled) add("Evening ${formatTime12h(eveningHour, eveningMinute)}")
         if (nightEnabled) add("Night ${formatTime12h(nightHour, nightMinute)}")
+    }
+
+    if (showCustomRecurrenceDialog) {
+        GoogleCalendarRecurrenceDialog(
+            title = "Custom recurrence",
+            medicineName = name.trim().ifBlank { null },
+            initialRule = recurrenceRule,
+            isSaving = false,
+            confirmButtonLabel = "Done",
+            onDismiss = { showCustomRecurrenceDialog = false },
+            onConfirm = { updatedRule ->
+                recurrenceRule = updatedRule
+                validationError = null
+                showCustomRecurrenceDialog = false
+            }
+        )
     }
 
     activeTimePickerSlot?.let { slot ->
@@ -241,7 +300,7 @@ fun MedicineEditorSheet(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Choose medicine type, name, dosage & per-slot meal timing",
+                        text = "Select family member, medicine type, dosage & slot timing",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -267,50 +326,51 @@ fun MedicineEditorSheet(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                // 1. FIRST: Medicine Type Dropdown
+                // 0. For Whom (Family Member) Dropdown
+                val selectedMemberName = familyMembers.firstOrNull { it.id == selectedMemberId }?.name ?: "Self"
                 ExposedDropdownMenuBox(
-                    expanded = formMenuExpanded,
-                    onExpandedChange = { formMenuExpanded = it },
+                    expanded = memberMenuExpanded,
+                    onExpandedChange = { memberMenuExpanded = it },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     OutlinedTextField(
-                        value = form.displayName,
+                        value = selectedMemberName,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Medicine Type") },
+                        label = { Text("For Whom (Member)") },
                         leadingIcon = {
                             Icon(
-                                imageVector = form.iconVector(),
+                                imageVector = Icons.Filled.Person,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         },
                         trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = formMenuExpanded)
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = memberMenuExpanded)
                         },
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
                             .fillMaxWidth()
-                            .testTag("medicine_type_dropdown")
+                            .testTag("medicine_member_dropdown")
                     )
 
                     ExposedDropdownMenu(
-                        expanded = formMenuExpanded,
-                        onDismissRequest = { formMenuExpanded = false }
+                        expanded = memberMenuExpanded,
+                        onDismissRequest = { memberMenuExpanded = false }
                     ) {
-                        MedicineForm.entries.forEach { itemForm ->
+                        familyMembers.forEach { member ->
                             DropdownMenuItem(
-                                text = { Text(itemForm.displayName) },
+                                text = { Text(member.name) },
                                 leadingIcon = {
                                     Icon(
-                                        imageVector = itemForm.iconVector(),
+                                        imageVector = Icons.Filled.Person,
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 },
-                                trailingIcon = if (form == itemForm) {
+                                trailingIcon = if (selectedMemberId == member.id) {
                                     {
                                         Icon(
                                             imageVector = Icons.Filled.Check,
@@ -321,20 +381,183 @@ fun MedicineEditorSheet(
                                     }
                                 } else null,
                                 onClick = {
-                                    if (form != itemForm) {
-                                        form = itemForm
-                                        if (dosage !in itemForm.dosagePresets()) {
-                                            dosage = ""
-                                            isCustomDosage = false
-                                        }
-                                        validationError = null
-                                    }
-                                    formMenuExpanded = false
+                                    selectedMemberId = member.id
+                                    memberMenuExpanded = false
                                 },
-                                modifier = Modifier.testTag("form_option_${itemForm.name.lowercase()}")
+                                modifier = Modifier.testTag("editor_member_option_${member.id}")
                             )
                         }
                     }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 1. FIRST: Medicine Type Dropdown (with Custom option)
+                if (!isCustomForm) {
+                    ExposedDropdownMenuBox(
+                        expanded = formMenuExpanded,
+                        onExpandedChange = { formMenuExpanded = it },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = form.displayName,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Medicine Type") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = form.iconVector(),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = formMenuExpanded)
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
+                                .fillMaxWidth()
+                                .testTag("medicine_type_dropdown")
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = formMenuExpanded,
+                            onDismissRequest = { formMenuExpanded = false }
+                        ) {
+                            MedicineForm.entries.forEach { itemForm ->
+                                DropdownMenuItem(
+                                    text = { Text(itemForm.displayName) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = itemForm.iconVector(),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    trailingIcon = if (form == itemForm) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    } else null,
+                                    onClick = {
+                                        if (form != itemForm || isCustomForm) {
+                                            form = itemForm
+                                            isCustomForm = false
+                                            customFormText = ""
+                                            if (!isCustomDosage && dosage !in itemForm.dosagePresets()) {
+                                                dosage = ""
+                                            }
+                                            validationError = null
+                                        }
+                                        formMenuExpanded = false
+                                    },
+                                    modifier = Modifier.testTag("form_option_${itemForm.name.lowercase()}")
+                                )
+                            }
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Custom (Type manually)") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Edit,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                onClick = {
+                                    isCustomForm = true
+                                    customFormText = ""
+                                    if (!isCustomDosage) {
+                                        dosage = ""
+                                    }
+                                    validationError = null
+                                    formMenuExpanded = false
+                                },
+                                modifier = Modifier.testTag("form_custom_option")
+                            )
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = customFormText,
+                        onValueChange = { updatedType ->
+                            if (updatedType.length <= 40) {
+                                customFormText = updatedType
+                                val nextPresets = MedicineForm.dosagePresetsForType(updatedType)
+                                if (!isCustomDosage && dosage !in nextPresets) {
+                                    dosage = ""
+                                }
+                            }
+                            validationError = null
+                        },
+                        label = { Text("Custom Medicine Type") },
+                        placeholder = { Text("e.g., Cream, Nasal Spray, Powder, Patch") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = activeIconCategory.iconVector(),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingIcon = {
+                            Box {
+                                IconButton(
+                                    onClick = { formMenuExpanded = true },
+                                    modifier = Modifier.testTag("form_presets_switcher")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.ArrowDropDown,
+                                        contentDescription = "Choose preset medicine type"
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = formMenuExpanded,
+                                    onDismissRequest = { formMenuExpanded = false }
+                                ) {
+                                    MedicineForm.entries.forEach { itemForm ->
+                                        DropdownMenuItem(
+                                            text = { Text(itemForm.displayName) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = itemForm.iconVector(),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            },
+                                            onClick = {
+                                                form = itemForm
+                                                isCustomForm = false
+                                                customFormText = ""
+                                                if (!isCustomDosage && dosage !in itemForm.dosagePresets()) {
+                                                    dosage = ""
+                                                }
+                                                validationError = null
+                                                formMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                            imeAction = ImeAction.Next
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("custom_medicine_type_input")
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -361,7 +584,8 @@ fun MedicineEditorSheet(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 3. THIRD: Dependent Dosage Dropdown (with Custom manual input option)
+                // 3. THIRD: Dependent Dosage Dropdown (updates dynamically for preset or custom Medicine Type)
+                val dosageTypeLabel = activeTypeLabel.ifBlank { "Custom" }
                 if (!isCustomDosage) {
                     ExposedDropdownMenuBox(
                         expanded = dosageMenuExpanded,
@@ -372,8 +596,8 @@ fun MedicineEditorSheet(
                             value = dosage,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Dosage (${form.displayName})") },
-                            placeholder = { Text("Select ${form.displayName.lowercase()} dosage") },
+                            label = { Text("Dosage ($dosageTypeLabel)") },
+                            placeholder = { Text("Select ${dosageTypeLabel.lowercase()} dosage") },
                             trailingIcon = {
                                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = dosageMenuExpanded)
                             },
@@ -439,15 +663,15 @@ fun MedicineEditorSheet(
                             if (it.length <= 40) dosage = it
                             validationError = null
                         },
-                        label = { Text("Custom Dosage (${form.displayName})") },
+                        label = { Text("Custom Dosage ($dosageTypeLabel)") },
                         placeholder = {
                             Text(
-                                when (form) {
+                                when (activeIconCategory) {
                                     MedicineForm.TABLET, MedicineForm.CAPSULE -> "e.g., 1.5 tablets"
                                     MedicineForm.SYRUP -> "e.g., 7.5 ml"
                                     MedicineForm.INJECTION -> "e.g., 15 units, 1.5 ml"
                                     MedicineForm.DROPS -> "e.g., 5 drops"
-                                    MedicineForm.INHALER -> "e.g., 3 puffs"
+                                    MedicineForm.INHALER -> "e.g., 2 puffs, 1 spray"
                                 }
                             )
                         },
@@ -578,6 +802,50 @@ fun MedicineEditorSheet(
                         onPickTime = { activeTimePickerSlot = TimeSlot.NIGHT },
                         onSelectMeal = { nightMealRelation = it }
                     )
+
+                    RecurrenceScheduleCard(
+                        rule = recurrenceRule,
+                        onSelectPreset = { presetFrequency ->
+                            val anchor = recurrenceRule.startDateKey?.takeIf { it.isNotBlank() }
+                                ?: todayDateKey()
+                            recurrenceRule = when (presetFrequency) {
+                                RecurrenceFrequency.NONE -> RecurrenceRule(
+                                    frequency = RecurrenceFrequency.NONE,
+                                    interval = 1,
+                                    endType = RecurrenceEndType.ON_DATE,
+                                    startDateKey = anchor,
+                                    endDateKey = anchor
+                                )
+                                RecurrenceFrequency.DAILY -> RecurrenceRule(
+                                    frequency = RecurrenceFrequency.DAILY,
+                                    interval = 1,
+                                    endType = RecurrenceEndType.NEVER,
+                                    startDateKey = anchor
+                                )
+                                RecurrenceFrequency.WEEKLY -> RecurrenceRule(
+                                    frequency = RecurrenceFrequency.WEEKLY,
+                                    interval = 1,
+                                    daysOfWeek = setOf(dayOfWeekForDateKey(anchor)),
+                                    endType = RecurrenceEndType.NEVER,
+                                    startDateKey = anchor
+                                )
+                                RecurrenceFrequency.MONTHLY -> RecurrenceRule(
+                                    frequency = RecurrenceFrequency.MONTHLY,
+                                    interval = 1,
+                                    endType = RecurrenceEndType.NEVER,
+                                    startDateKey = anchor
+                                )
+                                RecurrenceFrequency.YEARLY -> RecurrenceRule(
+                                    frequency = RecurrenceFrequency.YEARLY,
+                                    interval = 1,
+                                    endType = RecurrenceEndType.NEVER,
+                                    startDateKey = anchor
+                                )
+                            }
+                            validationError = null
+                        },
+                        onOpenCustomRecurrence = { showCustomRecurrenceDialog = true }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -632,10 +900,11 @@ fun MedicineEditorSheet(
                         }
                     } else {
                         Text(
-                            text = if (activeSlotLabels.isEmpty()) {
-                                "Turn on at least one alert slot above"
-                            } else {
-                                "Daily alerts: ${activeSlotLabels.joinToString(" • ")}"
+                            text = when {
+                                activeSlotLabels.isEmpty() ->
+                                    "Turn on at least one alert slot above"
+                                else ->
+                                    "${formatRecurrenceSummary(recurrenceRule)} • ${activeSlotLabels.joinToString(" • ")}"
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -647,9 +916,15 @@ fun MedicineEditorSheet(
 
                     Button(
                         onClick = {
+                            val trimmedCustomType = customFormText.trim()
                             val trimmedName = name.trim()
                             val trimmedDosage = dosage.trim()
+                            val start = recurrenceRule.startDateKey?.takeIf { it.isNotBlank() }
+                            val end = recurrenceRule.endDateKey?.takeIf { it.isNotBlank() }
                             when {
+                                isCustomForm && trimmedCustomType.isEmpty() -> {
+                                    validationError = "Please enter the custom medicine type."
+                                }
                                 trimmedName.isEmpty() -> {
                                     validationError = "Please enter the medicine name."
                                 }
@@ -658,6 +933,10 @@ fun MedicineEditorSheet(
                                 }
                                 !morningEnabled && !afternoonEnabled && !eveningEnabled && !nightEnabled -> {
                                     validationError = "Please turn on at least one slot (Morning, Afternoon, Evening, or Night)."
+                                }
+                                recurrenceRule.endType == RecurrenceEndType.ON_DATE &&
+                                    start != null && end != null && end < start -> {
+                                    validationError = "End date cannot be earlier than start date."
                                 }
                                 else -> {
                                     val primaryMeal = when {
@@ -671,7 +950,9 @@ fun MedicineEditorSheet(
                                         MedicineInput(
                                             name = trimmedName,
                                             dosage = trimmedDosage,
-                                            form = form,
+                                            form = activeIconCategory,
+                                            customFormLabel = if (isCustomForm) trimmedCustomType else "",
+                                            memberId = selectedMemberId,
                                             mealRelation = primaryMeal,
                                             notes = notes.trim(),
                                             morningEnabled = morningEnabled,
@@ -690,6 +971,13 @@ fun MedicineEditorSheet(
                                             nightHour = nightHour,
                                             nightMinute = nightMinute,
                                             nightMealRelation = nightMealRelation,
+                                            startDateKey = recurrenceRule.startDateKey,
+                                            endDateKey = recurrenceRule.endDateKey,
+                                            recurrenceFrequency = recurrenceRule.frequency,
+                                            recurrenceInterval = recurrenceRule.interval,
+                                            recurrenceDaysOfWeek = recurrenceRule.daysOfWeek,
+                                            recurrenceEndType = recurrenceRule.endType,
+                                            recurrenceCount = recurrenceRule.occurrenceCount,
                                             active = existingMedicine?.active ?: true
                                         )
                                     )
@@ -755,139 +1043,76 @@ private fun SlotToggleRow(
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { onToggle(!enabled) }
-                        .padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(style.container),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = style.icon,
-                            contentDescription = slot.displayName,
-                            tint = style.accent,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = slot.displayName,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = if (enabled) "${slot.localSubtitle} • Alert on" else "${slot.localSubtitle} • Off",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (enabled) style.accent else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                val timeTint = if (enabled) style.accent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-                val timeBorder = if (enabled) style.accent.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)
-
-                OutlinedButton(
-                    onClick = onPickTime,
-                    enabled = enabled,
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, timeBorder),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = style.accent,
-                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    modifier = Modifier
-                        .padding(horizontal = 6.dp)
-                        .testTag("pick_time_${slot.name.lowercase()}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AccessTime,
-                        contentDescription = null,
-                        tint = timeTint,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = formatTime12h(hour, minute),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = timeTint,
-                        maxLines = 1
-                    )
-                }
-
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = onToggle,
-                    modifier = Modifier.testTag("slot_switch_${slot.name.lowercase()}")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(style.container)
+                    .clickable { onToggle(!enabled) },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = style.icon,
+                    contentDescription = slot.displayName,
+                    tint = style.accent,
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
-            AnimatedVisibility(visible = enabled) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    HorizontalDivider(
-                        color = style.accent.copy(alpha = 0.18f),
-                        modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
-                    )
-                    Box(modifier = Modifier.fillMaxWidth()) {
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = slot.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onToggle(!enabled) }
+                )
+
+                AnimatedVisibility(visible = enabled) {
+                    Box {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
                             border = BorderStroke(1.dp, style.accent.copy(alpha = 0.35f)),
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .clickable(enabled = enabled) { mealMenuExpanded = true }
                                 .testTag("slot_meal_dropdown_${slot.name.lowercase()}")
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Restaurant,
-                                    contentDescription = null,
-                                    tint = style.accent,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Meal Timing",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.weight(1f)
-                                )
                                 Text(
                                     text = mealRelation.displayName,
-                                    style = MaterialTheme.typography.labelMedium,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = style.accent
+                                    color = style.accent,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
                                 Icon(
                                     imageVector = if (mealMenuExpanded) Icons.Filled.KeyboardArrowUp
                                     else Icons.Filled.KeyboardArrowDown,
-                                    contentDescription = "Select ${slot.displayName} meal timing",
+                                    contentDescription = "Select ${slot.displayName} meal option",
                                     tint = style.accent,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                             }
                         }
@@ -920,6 +1145,182 @@ private fun SlotToggleRow(
                             }
                         }
                     }
+                }
+            }
+
+            AnimatedVisibility(visible = enabled) {
+                OutlinedButton(
+                    onClick = onPickTime,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, style.accent.copy(alpha = 0.5f)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 6.dp)
+                        .testTag("pick_time_${slot.name.lowercase()}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AccessTime,
+                        contentDescription = null,
+                        tint = style.accent,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = formatTime12h(hour, minute),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = style.accent,
+                        maxLines = 1
+                    )
+                }
+            }
+
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                modifier = Modifier.testTag("slot_switch_${slot.name.lowercase()}")
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecurrenceScheduleCard(
+    rule: RecurrenceRule,
+    onSelectPreset: (RecurrenceFrequency) -> Unit,
+    onOpenCustomRecurrence: () -> Unit
+) {
+    var presetMenuExpanded by remember { mutableStateOf(false) }
+    val summary = formatRecurrenceSummary(rule)
+    val isCustom = rule.interval > 1 ||
+        rule.endType != RecurrenceEndType.NEVER ||
+        (rule.frequency == RecurrenceFrequency.WEEKLY && rule.daysOfWeek.size > 1)
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { presetMenuExpanded = true }
+                            .padding(vertical = 2.dp)
+                            .testTag("recurrence_preset_selector"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.EventRepeat,
+                                contentDescription = "Repeat Schedule",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Repeat Schedule",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = summary,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Icon(
+                            imageVector = if (presetMenuExpanded) Icons.Filled.KeyboardArrowUp
+                            else Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "Choose repeat schedule",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = presetMenuExpanded,
+                        onDismissRequest = { presetMenuExpanded = false }
+                    ) {
+                        RecurrenceFrequency.entries.forEach { preset ->
+                            val isSelected = !isCustom && rule.frequency == preset
+                            DropdownMenuItem(
+                                text = { Text(preset.label) },
+                                trailingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Filled.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                onClick = {
+                                    onSelectPreset(preset)
+                                    presetMenuExpanded = false
+                                },
+                                modifier = Modifier.testTag("recurrence_preset_${preset.name.lowercase()}")
+                            )
+                        }
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = "Custom...",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.EventRepeat,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            onClick = {
+                                presetMenuExpanded = false
+                                onOpenCustomRecurrence()
+                            },
+                            modifier = Modifier.testTag("recurrence_preset_custom")
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                OutlinedButton(
+                    onClick = onOpenCustomRecurrence,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("open_custom_recurrence_button")
+                ) {
+                    Text("Custom", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

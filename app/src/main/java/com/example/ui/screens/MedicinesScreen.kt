@@ -23,7 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EventRepeat
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -49,8 +51,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.model.Medicine
+import com.example.model.RecurrenceRule
 import com.example.model.TimeSlot
+import com.example.model.formatDateKeyDmy
 import com.example.model.formatTime12h
+import com.example.ui.components.GoogleCalendarRecurrenceDialog
 import com.example.ui.components.SlotChipBadge
 import com.example.ui.components.iconVector
 
@@ -58,14 +63,35 @@ import com.example.ui.components.iconVector
 @Composable
 fun MedicinesScreen(
     medicines: List<Medicine>,
+    memberNamesById: Map<String, String> = emptyMap(),
+    showMemberBadge: Boolean = false,
+    activeMemberLabel: String = "Self",
+    isSaving: Boolean = false,
     onAddMedicine: () -> Unit,
     onEditMedicine: (Medicine) -> Unit,
     onToggleActive: (Medicine, Boolean) -> Unit,
     onDeleteMedicine: (Medicine) -> Unit,
+    onUpdateRecurrence: (Medicine, RecurrenceRule) -> Unit = { _, _ -> },
     onTestNotification: (Medicine) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var pendingDelete by remember { mutableStateOf<Medicine?>(null) }
+    var extendingMedicine by remember { mutableStateOf<Medicine?>(null) }
+
+    extendingMedicine?.let { medToExtend ->
+        GoogleCalendarRecurrenceDialog(
+            title = if (medToExtend.isCourseEnded()) "Extend Repeat Schedule" else "Repeat Schedule",
+            medicineName = medToExtend.name,
+            initialRule = medToExtend.recurrenceRule(),
+            isSaving = isSaving,
+            confirmButtonLabel = "Save Schedule",
+            onDismiss = { extendingMedicine = null },
+            onConfirm = { updatedRule ->
+                onUpdateRecurrence(medToExtend, updatedRule)
+                extendingMedicine = null
+            }
+        )
+    }
 
     pendingDelete?.let { medToDelete ->
         AlertDialog(
@@ -111,7 +137,7 @@ fun MedicinesScreen(
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "${medicines.count { it.active }} active • ${medicines.size} total medicines",
+                        text = "$activeMemberLabel • ${medicines.count { it.active }} active • ${medicines.size} total",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -182,8 +208,8 @@ fun MedicinesScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = medicine.formEnum().iconVector(),
-                                    contentDescription = medicine.formEnum().displayName,
+                                    imageVector = medicine.formIconCategory().iconVector(),
+                                    contentDescription = medicine.formDisplayName(),
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                     modifier = Modifier.size(22.dp)
                                 )
@@ -198,12 +224,37 @@ fun MedicinesScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "${medicine.dosage} • ${medicine.formEnum().displayName}",
+                                    text = "${medicine.dosage} • ${medicine.formDisplayName()}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                if (showMemberBadge) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Person,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "For ${memberNamesById[medicine.memberId] ?: "Self"}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
+                                }
                             }
                             Switch(
                                 checked = medicine.active,
@@ -232,6 +283,52 @@ fun MedicinesScreen(
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(10.dp))
+                        val ended = medicine.isCourseEnded()
+                        val upcoming = medicine.isCourseUpcoming()
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = when {
+                                ended -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+                                upcoming -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                                else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.EventRepeat,
+                                    contentDescription = null,
+                                    tint = if (ended) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = medicine.formattedDateRange(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (ended) MaterialTheme.colorScheme.onErrorContainer
+                                    else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val statusText = when {
+                                    ended -> "• Ended"
+                                    upcoming -> "• Starts ${formatDateKeyDmy(medicine.startDateKey!!)}"
+                                    else -> "• Active"
+                                }
+                                Text(
+                                    text = statusText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (ended) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
                         if (medicine.notes.isNotBlank()) {
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
@@ -248,21 +345,46 @@ fun MedicinesScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            OutlinedButton(
-                                onClick = { onTestNotification(medicine) },
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier
-                                    .minimumInteractiveComponentSize()
-                                    .testTag("test_alert_button_${medicine.id}")
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.NotificationsActive,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Test Alert", style = MaterialTheme.typography.labelMedium)
+                                OutlinedButton(
+                                    onClick = { onTestNotification(medicine) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("test_alert_button_${medicine.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.NotificationsActive,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Test Alert", style = MaterialTheme.typography.labelSmall)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { extendingMedicine = medicine },
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("extend_course_button_${medicine.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.EventRepeat,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (medicine.isCourseEnded()) "Extend" else "Repeat",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
                             }
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
