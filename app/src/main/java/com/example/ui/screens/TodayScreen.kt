@@ -149,7 +149,7 @@ fun TodayScreen(
     val selfCustomName = state.selectedMember?.name
         ?.trim()
         ?.takeIf { it.isNotBlank() && !it.equals("Self", ignoreCase = true) }
-        ?: state.loggedInUser?.firstName?.trim()?.takeIf { it.isNotBlank() }
+        ?: state.userProfile.firstName.trim().takeIf { it.isNotBlank() }
         ?: state.userProfile.displayName
             .trim()
             .substringBefore(" ")

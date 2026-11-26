@@ -1,9 +1,7 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Global safety net: default deny everything
+    // Global default-deny safety net
     match /{document=**} {
       allow read, write: if false;
     }
@@ -28,131 +26,177 @@ service cloud.firestore {
       return resource.data;
     }
 
-    function isValidHour(h) {
-      return h is int && h >= 0 && h <= 23;
+    function isValidHour(v) {
+      return v is int && v >= 0 && v <= 23;
     }
 
-    function isValidMinute(m) {
-      return m is int && m >= 0 && m <= 59;
+    function isValidMinute(v) {
+      return v is int && v >= 0 && v <= 59;
     }
 
-    function isValidTimestamp(ts) {
-      return ts is timestamp && ts <= request.time;
+    function isValidMealRelation(v) {
+      return v is string && v in ['BEFORE_MEAL', 'AFTER_MEAL', 'WITH_MEAL', 'ANYTIME'];
     }
 
-    function isValidUserProfile(data, userId) {
+    function isValidSlot(v) {
+      return v is string && v in ['MORNING', 'AFTERNOON', 'EVENING', 'NIGHT'];
+    }
+
+    function isValidDateKey(v) {
+      return v is string && v.size() == 10 && v.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function isValidUserProfile(data) {
       return data.userId is string &&
-             data.userId == userId &&
              data.userId == request.auth.uid &&
-             data.displayName is string &&
-             data.displayName.size() >= 1 &&
-             data.displayName.size() <= 100 &&
-             isValidHour(data.morningHour) &&
-             isValidMinute(data.morningMinute) &&
-             isValidHour(data.afternoonHour) &&
-             isValidMinute(data.afternoonMinute) &&
-             isValidHour(data.nightHour) &&
-             isValidMinute(data.nightMinute) &&
-             isValidTimestamp(data.createdAt) &&
-             isValidTimestamp(data.updatedAt);
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.email is string && data.email.size() <= 120 &&
+             (!('firstName' in data) || data.firstName == null || (data.firstName is string && data.firstName.size() <= 40)) &&
+             (!('lastName' in data) || data.lastName == null || (data.lastName is string && data.lastName.size() <= 40)) &&
+             (!('gender' in data) || data.gender == null || (data.gender is string && data.gender.size() <= 20)) &&
+             (!('dob' in data) || data.dob == null || (data.dob is string && data.dob.size() <= 20)) &&
+             (!('state' in data) || data.state == null || (data.state is string && data.state.size() <= 50)) &&
+             (!('city' in data) || data.city == null || (data.city is string && data.city.size() <= 50)) &&
+             (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 20)) &&
+             isValidHour(data.morningHour) && isValidMinute(data.morningMinute) &&
+             isValidHour(data.afternoonHour) && isValidMinute(data.afternoonMinute) &&
+             isValidHour(data.eveningHour) && isValidMinute(data.eveningMinute) &&
+             isValidHour(data.nightHour) && isValidMinute(data.nightMinute);
     }
 
-    function isValidMedicine(data, userId) {
+    function isValidFamilyMember(data) {
       return data.userId is string &&
-             data.userId == userId &&
              data.userId == request.auth.uid &&
-             data.name is string &&
-             data.name.size() >= 1 &&
-             data.name.size() <= 80 &&
-             data.dosage is string &&
-             data.dosage.size() >= 1 &&
-             data.dosage.size() <= 40 &&
-             data.form is string &&
-             data.form in ['TABLET', 'CAPSULE', 'SYRUP', 'INJECTION', 'DROPS', 'INHALER'] &&
-             data.mealRelation is string &&
-             data.mealRelation in ['BEFORE_MEAL', 'AFTER_MEAL', 'WITH_MEAL', 'ANYTIME'] &&
-             data.notes is string &&
-             data.notes.size() <= 200 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 40 &&
+             data.relation is string && data.relation.size() >= 1 && data.relation.size() <= 30 &&
+             data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 10000 &&
+             data.defaultMember is bool;
+    }
+
+    function isValidMedicine(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             isValidId(data.memberId) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             data.dosage is string && data.dosage.size() >= 1 && data.dosage.size() <= 40 &&
+             data.form is string && data.form.size() >= 1 && data.form.size() <= 40 &&
+             isValidMealRelation(data.mealRelation) &&
+             data.notes is string && data.notes.size() <= 200 &&
              data.morningEnabled is bool &&
-             isValidHour(data.morningHour) &&
-             isValidMinute(data.morningMinute) &&
+             isValidHour(data.morningHour) && isValidMinute(data.morningMinute) &&
+             isValidMealRelation(data.morningMealRelation) &&
              data.afternoonEnabled is bool &&
-             isValidHour(data.afternoonHour) &&
-             isValidMinute(data.afternoonMinute) &&
+             isValidHour(data.afternoonHour) && isValidMinute(data.afternoonMinute) &&
+             isValidMealRelation(data.afternoonMealRelation) &&
+             data.eveningEnabled is bool &&
+             isValidHour(data.eveningHour) && isValidMinute(data.eveningMinute) &&
+             isValidMealRelation(data.eveningMealRelation) &&
              data.nightEnabled is bool &&
-             isValidHour(data.nightHour) &&
-             isValidMinute(data.nightMinute) &&
-             data.active is bool &&
-             (data.morningEnabled || data.afternoonEnabled || data.nightEnabled) &&
-             isValidTimestamp(data.createdAt) &&
-             isValidTimestamp(data.updatedAt);
+             isValidHour(data.nightHour) && isValidMinute(data.nightMinute) &&
+             isValidMealRelation(data.nightMealRelation) &&
+             (data.morningEnabled || data.afternoonEnabled || data.eveningEnabled || data.nightEnabled) &&
+             (!('startDateKey' in data) || data.startDateKey == null || isValidDateKey(data.startDateKey)) &&
+             (!('endDateKey' in data) || data.endDateKey == null || isValidDateKey(data.endDateKey)) &&
+             data.recurrenceFrequency is string && data.recurrenceFrequency in ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] &&
+             data.recurrenceInterval is int && data.recurrenceInterval >= 1 && data.recurrenceInterval <= 365 &&
+             data.recurrenceDays is string && data.recurrenceDays.size() <= 30 &&
+             data.recurrenceEndType is string && data.recurrenceEndType in ['NEVER', 'ON_DATE', 'AFTER_OCCURRENCES'] &&
+             (!('recurrenceCount' in data) || data.recurrenceCount == null || (data.recurrenceCount is int && data.recurrenceCount >= 1 && data.recurrenceCount <= 3650)) &&
+             data.active is bool;
     }
 
-    function isValidDoseLog(data, userId) {
+    function isValidDoseLog(data) {
       return data.userId is string &&
-             data.userId == userId &&
              data.userId == request.auth.uid &&
-             data.medicineId is string &&
-             data.medicineId.size() >= 1 &&
-             data.medicineId.size() <= 128 &&
-             data.medicineName is string &&
-             data.medicineName.size() >= 1 &&
-             data.medicineName.size() <= 80 &&
-             data.dosage is string &&
-             data.dosage.size() >= 1 &&
-             data.dosage.size() <= 40 &&
-             data.dateKey is string &&
-             data.dateKey.size() == 10 &&
-             data.dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
-             data.slot is string &&
-             data.slot in ['MORNING', 'AFTERNOON', 'NIGHT'] &&
-             data.status is string &&
-             data.status in ['TAKEN', 'SKIPPED'] &&
-             data.scheduledTimeLabel is string &&
-             data.scheduledTimeLabel.size() >= 1 &&
-             data.scheduledTimeLabel.size() <= 20 &&
-             data.takenAtEpochMillis is int &&
-             data.takenAtEpochMillis >= 0 &&
-             isValidTimestamp(data.createdAt) &&
-             isValidTimestamp(data.updatedAt);
+             isValidId(data.medicineId) &&
+             isValidId(data.memberId) &&
+             data.memberName is string && data.memberName.size() >= 1 && data.memberName.size() <= 40 &&
+             data.medicineName is string && data.medicineName.size() >= 1 && data.medicineName.size() <= 80 &&
+             data.dosage is string && data.dosage.size() >= 1 && data.dosage.size() <= 40 &&
+             isValidDateKey(data.dateKey) &&
+             isValidSlot(data.slot) &&
+             data.status is string && data.status in ['TAKEN', 'SKIPPED'] &&
+             data.scheduledTimeLabel is string && data.scheduledTimeLabel.size() >= 1 && data.scheduledTimeLabel.size() <= 20 &&
+             data.takenAtEpochMillis is int && data.takenAtEpochMillis >= 0;
     }
 
     match /users/{userId} {
       allow get: if isOwner(userId) && isValidId(userId);
-      allow list: if false;
+      allow list: if isOwner(userId);
 
       allow create: if isOwner(userId) &&
                        isValidId(userId) &&
+                       incoming().userId == request.auth.uid &&
                        incoming().keys().hasAll([
-                         'userId', 'displayName',
+                         'userId', 'displayName', 'email',
                          'morningHour', 'morningMinute',
                          'afternoonHour', 'afternoonMinute',
+                         'eveningHour', 'eveningMinute',
                          'nightHour', 'nightMinute',
                          'createdAt', 'updatedAt'
                        ]) &&
                        incoming().keys().hasOnly([
-                         'userId', 'displayName',
+                         'userId', 'displayName', 'email',
+                         'firstName', 'lastName', 'gender', 'dob', 'state', 'city', 'phone',
                          'morningHour', 'morningMinute',
                          'afternoonHour', 'afternoonMinute',
+                         'eveningHour', 'eveningMinute',
                          'nightHour', 'nightMinute',
                          'createdAt', 'updatedAt'
                        ]) &&
-                       isValidUserProfile(incoming(), userId);
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidUserProfile(incoming());
 
       allow update: if isOwner(userId) &&
                        isValidId(userId) &&
-                       isValidUserProfile(incoming(), userId) &&
+                       isValidUserProfile(incoming()) &&
                        incoming().userId == existing().userId &&
                        incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
                        incoming().diff(existing()).affectedKeys().hasOnly([
-                         'displayName',
+                         'displayName', 'email',
+                         'firstName', 'lastName', 'gender', 'dob', 'state', 'city', 'phone',
                          'morningHour', 'morningMinute',
                          'afternoonHour', 'afternoonMinute',
+                         'eveningHour', 'eveningMinute',
                          'nightHour', 'nightMinute',
                          'updatedAt'
                        ]);
 
       allow delete: if isOwner(userId) && isValidId(userId);
+
+      match /familyMembers/{memberId} {
+        allow get: if isOwner(userId) && isValidId(memberId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(memberId) &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll([
+                           'userId', 'name', 'relation', 'sortOrder', 'defaultMember',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'name', 'relation', 'sortOrder', 'defaultMember',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                         incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                         isValidFamilyMember(incoming());
+
+        allow update: if isOwner(userId) &&
+                         isValidId(memberId) &&
+                         isValidFamilyMember(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'name', 'relation', 'sortOrder', 'defaultMember', 'updatedAt'
+                         ]);
+
+        allow delete: if isOwner(userId) && isValidId(memberId);
+      }
 
       match /medicines/{medicineId} {
         allow get: if isOwner(userId) && isValidId(medicineId);
@@ -160,34 +204,53 @@ service cloud.firestore {
 
         allow create: if isOwner(userId) &&
                          isValidId(medicineId) &&
+                         incoming().userId == request.auth.uid &&
                          incoming().keys().hasAll([
-                           'userId', 'name', 'dosage', 'form', 'mealRelation', 'notes',
-                           'morningEnabled', 'morningHour', 'morningMinute',
-                           'afternoonEnabled', 'afternoonHour', 'afternoonMinute',
-                           'nightEnabled', 'nightHour', 'nightMinute',
+                           'userId', 'memberId', 'name', 'dosage', 'form', 'mealRelation', 'notes',
+                           'morningEnabled', 'morningHour', 'morningMinute', 'morningMealRelation',
+                           'afternoonEnabled', 'afternoonHour', 'afternoonMinute', 'afternoonMealRelation',
+                           'eveningEnabled', 'eveningHour', 'eveningMinute', 'eveningMealRelation',
+                           'nightEnabled', 'nightHour', 'nightMinute', 'nightMealRelation',
+                           'recurrenceFrequency', 'recurrenceInterval', 'recurrenceDays', 'recurrenceEndType',
                            'active', 'createdAt', 'updatedAt'
                          ]) &&
                          incoming().keys().hasOnly([
-                           'userId', 'name', 'dosage', 'form', 'mealRelation', 'notes',
-                           'morningEnabled', 'morningHour', 'morningMinute',
-                           'afternoonEnabled', 'afternoonHour', 'afternoonMinute',
-                           'nightEnabled', 'nightHour', 'nightMinute',
+                           'userId', 'memberId', 'name', 'dosage', 'form', 'mealRelation', 'notes',
+                           'morningEnabled', 'morningHour', 'morningMinute', 'morningMealRelation',
+                           'afternoonEnabled', 'afternoonHour', 'afternoonMinute', 'afternoonMealRelation',
+                           'eveningEnabled', 'eveningHour', 'eveningMinute', 'eveningMealRelation',
+                           'nightEnabled', 'nightHour', 'nightMinute', 'nightMealRelation',
+                           'startDateKey', 'endDateKey',
+                           'recurrenceFrequency', 'recurrenceInterval', 'recurrenceDays', 'recurrenceEndType', 'recurrenceCount',
                            'active', 'createdAt', 'updatedAt'
                          ]) &&
-                         isValidMedicine(incoming(), userId);
+                         incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                         incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                         isValidMedicine(incoming());
 
         allow update: if isOwner(userId) &&
                          isValidId(medicineId) &&
-                         isValidMedicine(incoming(), userId) &&
+                         isValidMedicine(incoming()) &&
                          incoming().userId == existing().userId &&
                          incoming().createdAt == existing().createdAt &&
+                         incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
                          (
                            incoming().diff(existing()).affectedKeys().hasOnly(['active', 'updatedAt']) ||
                            incoming().diff(existing()).affectedKeys().hasOnly([
-                             'name', 'dosage', 'form', 'mealRelation', 'notes',
-                             'morningEnabled', 'morningHour', 'morningMinute',
-                             'afternoonEnabled', 'afternoonHour', 'afternoonMinute',
-                             'nightEnabled', 'nightHour', 'nightMinute',
+                             'startDateKey', 'endDateKey',
+                             'recurrenceFrequency', 'recurrenceInterval', 'recurrenceDays',
+                             'recurrenceEndType', 'recurrenceCount',
+                             'active', 'updatedAt'
+                           ]) ||
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'memberId', 'name', 'dosage', 'form', 'mealRelation', 'notes',
+                             'morningEnabled', 'morningHour', 'morningMinute', 'morningMealRelation',
+                             'afternoonEnabled', 'afternoonHour', 'afternoonMinute', 'afternoonMealRelation',
+                             'eveningEnabled', 'eveningHour', 'eveningMinute', 'eveningMealRelation',
+                             'nightEnabled', 'nightHour', 'nightMinute', 'nightMealRelation',
+                             'startDateKey', 'endDateKey',
+                             'recurrenceFrequency', 'recurrenceInterval', 'recurrenceDays',
+                             'recurrenceEndType', 'recurrenceCount',
                              'active', 'updatedAt'
                            ])
                          );
@@ -201,30 +264,36 @@ service cloud.firestore {
 
         allow create: if isOwner(userId) &&
                          isValidId(logId) &&
+                         incoming().userId == request.auth.uid &&
                          incoming().keys().hasAll([
-                           'userId', 'medicineId', 'medicineName', 'dosage',
-                           'dateKey', 'slot', 'status', 'scheduledTimeLabel',
-                           'takenAtEpochMillis', 'createdAt', 'updatedAt'
+                           'userId', 'medicineId', 'memberId', 'memberName',
+                           'medicineName', 'dosage', 'dateKey', 'slot', 'status',
+                           'scheduledTimeLabel', 'takenAtEpochMillis',
+                           'createdAt', 'updatedAt'
                          ]) &&
                          incoming().keys().hasOnly([
-                           'userId', 'medicineId', 'medicineName', 'dosage',
-                           'dateKey', 'slot', 'status', 'scheduledTimeLabel',
-                           'takenAtEpochMillis', 'createdAt', 'updatedAt'
+                           'userId', 'medicineId', 'memberId', 'memberName',
+                           'medicineName', 'dosage', 'dateKey', 'slot', 'status',
+                           'scheduledTimeLabel', 'takenAtEpochMillis',
+                           'createdAt', 'updatedAt'
                          ]) &&
-                         isValidDoseLog(incoming(), userId);
+                         incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                         incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                         isValidDoseLog(incoming());
 
         allow update: if isOwner(userId) &&
                          isValidId(logId) &&
-                         isValidDoseLog(incoming(), userId) &&
+                         isValidDoseLog(incoming()) &&
                          incoming().userId == existing().userId &&
-                         incoming().medicineId == existing().medicineId &&
-                         incoming().dateKey == existing().dateKey &&
-                         incoming().slot == existing().slot &&
                          incoming().createdAt == existing().createdAt &&
-                         incoming().diff(existing()).affectedKeys().hasOnly([
-                           'status', 'takenAtEpochMillis', 'medicineName', 'dosage',
-                           'scheduledTimeLabel', 'updatedAt'
-                         ]);
+                         incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['memberName', 'updatedAt']) ||
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'memberName', 'medicineName', 'dosage', 'status',
+                             'scheduledTimeLabel', 'takenAtEpochMillis', 'updatedAt'
+                           ])
+                         );
 
         allow delete: if isOwner(userId) && isValidId(logId);
       }

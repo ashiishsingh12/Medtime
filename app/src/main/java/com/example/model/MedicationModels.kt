@@ -202,6 +202,14 @@ data class FamilyMember(
 
 data class UserProfile(
     val displayName: String = "Patient",
+    val email: String = "",
+    val firstName: String = "",
+    val lastName: String = "",
+    val gender: String = "",
+    val dob: String = "",
+    val state: String = "",
+    val city: String = "",
+    val phone: String = "",
     val morningHour: Int = 8,
     val morningMinute: Int = 0,
     val afternoonHour: Int = 13,
@@ -217,74 +225,6 @@ enum class GenderOption(val displayName: String) {
     FEMALE("Female"),
     OTHER("Other")
 }
-
-enum class UserRole(val displayName: String) {
-    ADMIN("Admin"),
-    USER("User");
-
-    companion object {
-        fun fromRaw(raw: String?): UserRole =
-            entries.firstOrNull { it.name.equals(raw?.trim(), ignoreCase = true) } ?: USER
-    }
-}
-
-object AdminIdentity {
-    const val PRIMARY_ADMIN_EMAIL = "ashiish.singh12@gamil.com"
-    const val ALT_ADMIN_EMAIL = "ashiish.singh12@gmail.com"
-    const val ADMIN_PHONE = "9149044036"
-
-    private val adminEmails = setOf(PRIMARY_ADMIN_EMAIL, ALT_ADMIN_EMAIL)
-
-    fun isDesignatedAdminEmail(email: String): Boolean =
-        email.trim().lowercase() in adminEmails
-
-    fun isDesignatedAdminPhone(phone: String): Boolean =
-        normalizePhoneDigits(phone) == ADMIN_PHONE
-
-    fun isDesignatedAdmin(email: String, phone: String): Boolean =
-        isDesignatedAdminEmail(email) || isDesignatedAdminPhone(phone)
-
-    fun isDesignatedAdminIdentifier(identifier: String): Boolean {
-        val trimmed = identifier.trim()
-        return if (trimmed.contains("@")) {
-            isDesignatedAdminEmail(trimmed)
-        } else {
-            isDesignatedAdminPhone(trimmed)
-        }
-    }
-}
-
-data class UserAccount(
-    val id: String,
-    val firstName: String,
-    val lastName: String,
-    val gender: String,
-    val dob: String,
-    val state: String,
-    val city: String,
-    val email: String,
-    val phone: String,
-    val role: UserRole = UserRole.USER,
-    val createdAtMillis: Long = 0L
-) {
-    val fullName: String
-        get() = listOf(firstName.trim(), lastName.trim()).filter { it.isNotEmpty() }.joinToString(" ")
-
-    val isAdmin: Boolean
-        get() = role == UserRole.ADMIN
-}
-
-data class RegistrationInput(
-    val firstName: String,
-    val lastName: String,
-    val gender: String,
-    val dob: String,
-    val state: String,
-    val city: String,
-    val email: String,
-    val phone: String,
-    val password: String
-)
 
 sealed interface TodayDoseFilter {
     data object All : TodayDoseFilter

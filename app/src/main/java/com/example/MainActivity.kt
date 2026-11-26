@@ -11,10 +11,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -28,11 +32,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -45,8 +44,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Medication
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Today
@@ -56,12 +55,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,10 +65,13 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -80,6 +79,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -94,6 +94,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -108,23 +109,28 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.data.MedicationRepository
-import com.example.data.auth.AuthSessionManager
+import com.example.data.auth.attemptAutoSignIn
+import com.example.data.auth.authStateFlow
+import com.example.data.auth.signOutWithCleanup
 import com.example.model.FamilyMember
 import com.example.model.Medicine
 import com.example.model.TimeSlot
 import com.example.notifications.MedicationNotificationHelper
 import com.example.notifications.MedicationReminderScheduler
+import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.HistoryScreen
-import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.MedicineEditorSheet
 import com.example.ui.screens.MedicinesScreen
-import com.example.ui.screens.RegistrationScreen
 import com.example.ui.screens.SettingsDialog
 import com.example.ui.screens.TodayScreen
 import com.example.ui.theme.MedTimeTheme
-import com.example.ui.viewmodel.AuthUiState
 import com.example.ui.viewmodel.MedTimeViewModel
 import com.example.ui.viewmodel.UiState
+import com.google.firebase.Firebase
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 
 const val ROUTE_TODAY = "today"
@@ -170,28 +176,80 @@ class MainActivity : ComponentActivity() {
         MedicationNotificationHelper.ensureChannel(this)
         setContent {
             MedTimeTheme {
-                MedTimeMainApp()
+                AppNavigation()
             }
+        }
+    }
+}
+
+@Composable
+fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val credentialManager = remember(context) { CredentialManager.create(context) }
+    val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
+    var isCheckingAutoSignIn by remember { mutableStateOf(auth.currentUser == null) }
+
+    LaunchedEffect(Unit) {
+        if (auth.currentUser == null) {
+            attemptAutoSignIn(
+                context = context,
+                credentialManager = credentialManager,
+                onAuthSuccess = { isCheckingAutoSignIn = false },
+                onUnauthenticated = { isCheckingAutoSignIn = false },
+                scope = scope
+            )
+        } else {
+            isCheckingAutoSignIn = false
+        }
+    }
+
+    val user = currentUser
+    if (user == null) {
+        AuthScreen(
+            isCheckingAutoSignIn = isCheckingAutoSignIn,
+            onAuthSuccess = { isCheckingAutoSignIn = false }
+        )
+    } else {
+        key(user.uid) {
+            MedTimeMainApp(
+                currentUser = user,
+                onSignOut = {
+                    signOutWithCleanup(
+                        appContext = context.applicationContext,
+                        credentialManager = credentialManager,
+                        scope = scope
+                    )
+                }
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MedTimeMainApp() {
+fun MedTimeMainApp(
+    currentUser: FirebaseUser,
+    onSignOut: () -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val viewModel: MedTimeViewModel = viewModel(
+        key = currentUser.uid,
         factory = viewModelFactory {
             initializer {
                 val app = checkNotNull(this[APPLICATION_KEY]) {
                     "APPLICATION_KEY missing from CreationExtras"
                 }
+                val databaseId = app.getString(R.string.firestore_database_id)
+                val db = FirebaseFirestore.getInstance(databaseId)
                 MedTimeViewModel(
-                    repository = MedicationRepository(app),
-                    sessionManager = AuthSessionManager(app),
+                    repository = MedicationRepository(db),
+                    currentUserId = currentUser.uid,
+                    currentUserEmail = currentUser.email.orEmpty(),
+                    currentUserDisplayName = currentUser.displayName.orEmpty(),
                     onAlarmsSync = { meds, memberNames ->
                         MedicationReminderScheduler.syncAllAlarms(app, meds, memberNames)
                     }
@@ -200,14 +258,8 @@ fun MedTimeMainApp() {
         }
     )
 
-    val authState by viewModel.authState.collectAsStateWithLifecycle()
-    val authError by viewModel.authError.collectAsStateWithLifecycle()
-    val isAuthBusy by viewModel.isAuthBusy.collectAsStateWithLifecycle()
-    val hasAdminAccount by viewModel.hasAdminAccount.collectAsStateWithLifecycle()
-    val adminUsers by viewModel.adminUsers.collectAsStateWithLifecycle()
     val dashboardState by viewModel.dashboardState.collectAsStateWithLifecycle()
     val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
-    var showRegisterScreen by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { message ->
@@ -291,55 +343,6 @@ fun MedTimeMainApp() {
         }
     }
 
-    when (authState) {
-        is AuthUiState.Checking -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-            return
-        }
-
-        is AuthUiState.Unauthenticated -> {
-            if (showRegisterScreen) {
-                RegistrationScreen(
-                    isBusy = isAuthBusy,
-                    errorMessage = authError,
-                    onClearError = viewModel::clearAuthError,
-                    onRegister = viewModel::register,
-                    onBackToLogin = {
-                        viewModel.clearAuthError()
-                        showRegisterScreen = false
-                    }
-                )
-            } else {
-                LoginScreen(
-                    isBusy = isAuthBusy,
-                    hasAdminAccount = hasAdminAccount,
-                    errorMessage = authError,
-                    onClearError = viewModel::clearAuthError,
-                    onLogin = viewModel::login,
-                    onClaimAdmin = viewModel::claimAdminAccount,
-                    onNavigateToSignUp = {
-                        viewModel.clearAuthError()
-                        showRegisterScreen = true
-                    }
-                )
-            }
-            return
-        }
-
-        is AuthUiState.Authenticated -> {
-            LaunchedEffect(Unit) {
-                showRegisterScreen = false
-            }
-        }
-    }
-
-    val isCurrentUserAdmin = (authState as? AuthUiState.Authenticated)?.user?.isAdmin == true
-
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val useNavigationRail = maxWidth >= 600.dp
 
@@ -362,22 +365,6 @@ fun MedTimeMainApp() {
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
-                            if (isCurrentUserAdmin) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primary,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.testTag("topbar_admin_badge")
-                                ) {
-                                    Text(
-                                        text = "ADMIN",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
                         }
                     },
                     actions = {
@@ -879,16 +866,21 @@ fun MedTimeMainApp() {
                                 if (showSettingsDialog) {
                                     SettingsDialog(
                                         userProfile = data.userProfile,
-                                        loggedInUser = data.loggedInUser,
-                                        adminUsers = adminUsers,
-                                        sessionExpiresAtMillis = data.sessionExpiresAtMillis,
+                                        accountEmail = data.userEmail.ifBlank { data.userProfile.email },
                                         hasNotificationPermission = hasNotificationPermission,
                                         canScheduleExactAlarms = canScheduleExactAlarms,
                                         isSaving = isSaving,
                                         onDismiss = { showSettingsDialog = false },
-                                        onSaveSettings = { name, mH, mM, aH, aM, eH, eM, nH, nM ->
+                                        onSaveSettings = { name, first, last, gen, birthDate, st, cty, ph, mH, mM, aH, aM, eH, eM, nH, nM ->
                                             viewModel.updateProfileAndDefaults(
                                                 displayName = name,
+                                                firstName = first,
+                                                lastName = last,
+                                                gender = gen,
+                                                dob = birthDate,
+                                                state = st,
+                                                city = cty,
+                                                phone = ph,
                                                 morningHour = mH,
                                                 morningMinute = mM,
                                                 afternoonHour = aH,
@@ -903,12 +895,9 @@ fun MedTimeMainApp() {
                                         },
                                         onRequestNotificationPermission = requestNotificationPermission,
                                         onRequestExactAlarmPermission = requestExactAlarmPermission,
-                                        onUpdateUserRole = viewModel::updateUserRole,
-                                        onDeleteUser = viewModel::deleteUserAccount,
                                         onLogout = {
                                             showSettingsDialog = false
-                                            showRegisterScreen = false
-                                            viewModel.logout()
+                                            onSignOut()
                                         }
                                     )
                                 }
@@ -1091,5 +1080,3 @@ private fun EditFamilyMemberDialog(
         }
     )
 }
-
-

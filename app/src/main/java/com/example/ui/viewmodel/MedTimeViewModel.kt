@@ -4,22 +4,21 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.MedicationRepository
-import com.example.data.auth.AuthSessionManager
 import com.example.model.DayAdherenceSummary
 import com.example.model.DoseLog
 import com.example.model.DoseStatus
 import com.example.model.FamilyMember
 import com.example.model.Medicine
 import com.example.model.MedicineInput
-import com.example.model.RegistrationInput
+import com.example.model.RecurrenceRule
 import com.example.model.ScheduledDoseItem
 import com.example.model.TimeSlot
 import com.example.model.TodayDoseFilter
-import com.example.model.UserAccount
 import com.example.model.UserProfile
-import com.example.model.UserRole
+import com.example.model.formatRecurrenceSummary
 import com.example.model.recentDateKeys
 import com.example.model.todayDateKey
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +26,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -40,18 +38,9 @@ sealed interface UiState<out T> {
     data class Error(val message: String) : UiState<Nothing>
 }
 
-sealed interface AuthUiState {
-    data object Checking : AuthUiState
-    data object Unauthenticated : AuthUiState
-    data class Authenticated(
-        val user: UserAccount,
-        val sessionExpiresAtMillis: Long
-    ) : AuthUiState
-}
-
 data class TimetableDashboardState(
-    val loggedInUser: UserAccount?,
-    val sessionExpiresAtMillis: Long,
+    val userId: String,
+    val userEmail: String,
     val userProfile: UserProfile,
     val familyMembers: List<FamilyMember>,
     val selectedMemberId: String,
@@ -68,227 +57,98 @@ data class TimetableDashboardState(
 
 class MedTimeViewModel(
     private val repository: MedicationRepository,
-    private val sessionManager: AuthSessionManager,
+    private val currentUserId: String,
+    private val currentUserEmail: String,
+    private val currentUserDisplayName: String,
     private val onAlarmsSync: (List<Medicine>, Map<String, String>) -> Unit
 ) : ViewModel() {
 
-    private val _authState = MutableStateFlow<AuthUiState>(AuthUiState.Checking)
-    val authState: StateFlow<AuthUiState> = _authState.asStateFlow()
-
-    private val _authError = MutableStateFlow<String?>(null)
-    val authError: StateFlow<String?> = _authError.asStateFlow()
-
-    private val _isAuthBusy = MutableStateFlow(false)
-    val isAuthBusy: StateFlow<Boolean> = _isAuthBusy.asStateFlow()
-
-    private val _hasAdminAccount = MutableStateFlow(false)
-    val hasAdminAccount: StateFlow<Boolean> = _hasAdminAccount.asStateFlow()
-
     private val _selectedFilter = MutableStateFlow<TodayDoseFilter>(TodayDoseFilter.All)
-    val selectedFilter: StateFlow<TodayDoseFilter> = _selectedFilter.asStateFlow()
-
     private val _selectedMemberId = MutableStateFlow(FamilyMember.SELF_ID)
-    val selectedMemberId: StateFlow<String> = _selectedMemberId.asStateFlow()
 
     private val _isSaving = MutableStateFlow(false)
-    val isSaving: StateFlow<Boolean> = _isSaving.asStateFlow()
+    val isSaving: StateFlow<Boolean> = _isSaving
 
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val events: SharedFlow<String> = _events.asSharedFlow()
 
-    val adminUsers: StateFlow<List<UserAccount>> = combine(
-        repository.observeAllUserAccounts(),
-        _authState
-    ) { accounts, auth ->
-        val currentUser = (auth as? AuthUiState.Authenticated)?.user
-        if (currentUser?.isAdmin == true) accounts else emptyList()
-    }
-        .catch { error ->
-            if (error is CancellationException) throw error
-            Log.w(TAG, "Error observing user accounts", error)
-            emit(emptyList())
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = emptyList()
-        )
-
     init {
         viewModelScope.launch {
-            repository.ensureDefaultFamilyMembers()
-            repository.ensureDefaultProfile()
-            _hasAdminAccount.value = repository.hasAdminAccount()
-            val session = sessionManager.getValidSession()
-            if (session != null) {
-                val account = repository.getUserAccountById(session.userId)
-                if (account != null) {
-                    _authState.value = AuthUiState.Authenticated(account, session.expiresAtMillis)
-                } else {
-                    sessionManager.clearSession()
-                    _authState.value = AuthUiState.Unauthenticated
-                }
-            } else {
-                _authState.value = AuthUiState.Unauthenticated
-            }
-            _hasAdminAccount.value = repository.hasAdminAccount()
-        }
-    }
-
-    fun clearAuthError() {
-        _authError.value = null
-    }
-
-    fun login(identifier: String, password: String) {
-        viewModelScope.launch {
-            _isAuthBusy.value = true
-            _authError.value = null
-            val result = repository.loginUser(identifier, password)
-            _isAuthBusy.value = false
-            result.onSuccess { account ->
-                val expiresAt = sessionManager.saveSession(account.id)
-                _hasAdminAccount.value = repository.hasAdminAccount()
-                _authState.value = AuthUiState.Authenticated(account, expiresAt)
-            }.onFailure { err ->
-                _authError.value = err.localizedMessage ?: "Sign in failed."
+            val initResult = repository.ensureUserInitialized(
+                userId = currentUserId,
+                displayName = currentUserDisplayName,
+                email = currentUserEmail
+            )
+            initResult.onFailure { err ->
+                Log.w(TAG, "Failed to initialize user profile/members", err)
             }
         }
     }
 
-    fun register(input: RegistrationInput) {
-        viewModelScope.launch {
-            _isAuthBusy.value = true
-            _authError.value = null
-            val result = repository.registerUser(input)
-            _isAuthBusy.value = false
-            result.onSuccess { account ->
-                val expiresAt = sessionManager.saveSession(account.id)
-                _hasAdminAccount.value = repository.hasAdminAccount()
-                _authState.value = AuthUiState.Authenticated(account, expiresAt)
-                _events.tryEmit(
-                    if (account.isAdmin) "Welcome Admin, ${account.firstName}!"
-                    else "Welcome, ${account.firstName}!"
-                )
-            }.onFailure { err ->
-                _authError.value = err.localizedMessage ?: "Registration failed."
+    private fun unwrapFirestoreFailure(error: Throwable, fallbackMessage: String): String {
+        val firestoreError = generateSequence(error) { it.cause }
+            .filterIsInstance<FirebaseFirestoreException>()
+            .firstOrNull()
+        if (firestoreError == null && error is CancellationException) throw error
+        val rootError = firestoreError ?: error
+        Log.w(TAG, fallbackMessage, rootError)
+        return rootError.localizedMessage ?: rootError.message ?: fallbackMessage
+    }
+
+    private val familyMembersFlow: StateFlow<UiState<List<FamilyMember>>> =
+        repository.observeFamilyMembers(currentUserId)
+            .map<List<FamilyMember>, UiState<List<FamilyMember>>> { UiState.Success(it) }
+            .catch { error ->
+                emit(UiState.Error(unwrapFirestoreFailure(error, "Failed to load family members")))
             }
-        }
-    }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = UiState.Loading
+            )
 
-    fun claimAdminAccount(email: String, phone: String, password: String) {
-        viewModelScope.launch {
-            _isAuthBusy.value = true
-            _authError.value = null
-            val result = repository.claimAdminAccount(email, phone, password)
-            _isAuthBusy.value = false
-            result.onSuccess { account ->
-                val expiresAt = sessionManager.saveSession(account.id)
-                _hasAdminAccount.value = true
-                _authState.value = AuthUiState.Authenticated(account, expiresAt)
-                _events.tryEmit("Admin account activated for ${account.email}")
-            }.onFailure { err ->
-                _hasAdminAccount.value = repository.hasAdminAccount()
-                _authError.value = err.localizedMessage ?: "Admin setup failed."
+    private val userProfileFlow: StateFlow<UiState<UserProfile>> =
+        repository.observeUserProfile(currentUserId)
+            .map<UserProfile, UiState<UserProfile>> { UiState.Success(it) }
+            .catch { error ->
+                emit(UiState.Error(unwrapFirestoreFailure(error, "Failed to load patient profile")))
             }
-        }
-    }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = UiState.Loading
+            )
 
-    fun updateUserRole(targetUserId: String, newRole: UserRole) {
-        val currentUser = (_authState.value as? AuthUiState.Authenticated)?.user ?: return
-        if (!currentUser.isAdmin) {
-            _events.tryEmit("Admin access required.")
-            return
-        }
-        viewModelScope.launch {
-            val result = repository.updateUserRole(currentUser.id, targetUserId, newRole)
-            result.onSuccess {
-                _events.tryEmit("Updated user role to ${newRole.displayName}")
-            }.onFailure { err ->
-                _events.tryEmit(err.localizedMessage ?: "Could not update user role.")
+    private val medicinesFlow: StateFlow<UiState<List<Medicine>>> =
+        repository.observeMedicines(currentUserId)
+            .map<List<Medicine>, UiState<List<Medicine>>> { meds ->
+                UiState.Success(meds.sortedBy { it.name.lowercase() })
             }
-        }
-    }
-
-    fun deleteUserAccount(targetUserId: String) {
-        val currentUser = (_authState.value as? AuthUiState.Authenticated)?.user ?: return
-        if (!currentUser.isAdmin) {
-            _events.tryEmit("Admin access required.")
-            return
-        }
-        viewModelScope.launch {
-            val result = repository.deleteUserAccount(currentUser.id, targetUserId)
-            result.onSuccess {
-                _events.tryEmit("User account removed")
-            }.onFailure { err ->
-                _events.tryEmit(err.localizedMessage ?: "Could not remove user.")
+            .catch { error ->
+                emit(UiState.Error(unwrapFirestoreFailure(error, "Failed to load medicines")))
             }
-        }
-    }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = UiState.Loading
+            )
 
-    fun logout() {
-        sessionManager.clearSession()
-        _authError.value = null
-        _authState.value = AuthUiState.Unauthenticated
-    }
+    private val doseLogsFlow: StateFlow<UiState<List<DoseLog>>> =
+        repository.observeDoseLogs(currentUserId)
+            .map<List<DoseLog>, UiState<List<DoseLog>>> { logs ->
+                UiState.Success(logs.sortedByDescending { it.takenAtEpochMillis })
+            }
+            .catch { error ->
+                emit(UiState.Error(unwrapFirestoreFailure(error, "Failed to load dose history")))
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = UiState.Loading
+            )
 
-    private val familyMembersFlow: StateFlow<UiState<List<FamilyMember>>> = repository.observeFamilyMembers()
-        .map<List<FamilyMember>, UiState<List<FamilyMember>>> { UiState.Success(it) }
-        .catch { error ->
-            if (error is CancellationException) throw error
-            Log.w(TAG, "Error observing family members", error)
-            emit(UiState.Success(FamilyMember.DefaultMembers))
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = UiState.Success(FamilyMember.DefaultMembers)
-        )
-
-    private val userProfileFlow: StateFlow<UiState<UserProfile>> = repository.observeUserProfile()
-        .map<UserProfile, UiState<UserProfile>> { UiState.Success(it) }
-        .catch { error ->
-            if (error is CancellationException) throw error
-            Log.w(TAG, "Error observing profile", error)
-            emit(UiState.Error(error.localizedMessage ?: "Failed to load patient profile"))
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = UiState.Loading
-        )
-
-    private val medicinesFlow: StateFlow<UiState<List<Medicine>>> = repository.observeMedicines()
-        .map<List<Medicine>, UiState<List<Medicine>>> { meds ->
-            UiState.Success(meds.sortedBy { it.name.lowercase() })
-        }
-        .catch { error ->
-            if (error is CancellationException) throw error
-            Log.w(TAG, "Error observing medicines", error)
-            emit(UiState.Error(error.localizedMessage ?: "Failed to load medicines"))
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = UiState.Loading
-        )
-
-    private val doseLogsFlow: StateFlow<UiState<List<DoseLog>>> = repository.observeDoseLogs()
-        .map<List<DoseLog>, UiState<List<DoseLog>>> { logs ->
-            UiState.Success(logs.sortedByDescending { it.takenAtEpochMillis })
-        }
-        .catch { error ->
-            if (error is CancellationException) throw error
-            Log.w(TAG, "Error observing dose logs", error)
-            emit(UiState.Error(error.localizedMessage ?: "Failed to load dose history"))
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = UiState.Loading
-        )
-
-    private val selectionAndAuthFlow = combine(_selectedFilter, _selectedMemberId, _authState) { filter, memberId, auth ->
-        Triple(filter, memberId, auth)
+    private val selectionFlow = combine(_selectedFilter, _selectedMemberId) { filter, memberId ->
+        filter to memberId
     }
 
     val dashboardState: StateFlow<UiState<TimetableDashboardState>> = combine(
@@ -296,12 +156,13 @@ class MedTimeViewModel(
         familyMembersFlow,
         medicinesFlow,
         doseLogsFlow,
-        selectionAndAuthFlow
-    ) { profileState, membersState, medsState, logsState, (filter, activeMemberId, auth) ->
+        selectionFlow
+    ) { profileState, membersState, medsState, logsState, (filter, activeMemberId) ->
         when {
             medsState is UiState.Error -> UiState.Error(medsState.message)
             logsState is UiState.Error -> UiState.Error(logsState.message)
             profileState is UiState.Error -> UiState.Error(profileState.message)
+            membersState is UiState.Error -> UiState.Error(membersState.message)
             medsState is UiState.Success &&
                 logsState is UiState.Success &&
                 profileState is UiState.Success &&
@@ -349,22 +210,22 @@ class MedTimeViewModel(
                         .filter { it.active && it.isScheduledOnDate(todayKey) }
                         .forEach { med ->
                             val memberName = memberNamesById[med.memberId] ?: "Self"
-                        TimeSlot.entries.forEach { slot ->
-                            if (med.isSlotEnabled(slot)) {
-                                val log = todayLogsByKey["${slot.name}_${med.id}"]
-                                add(
-                                    ScheduledDoseItem(
-                                        medicine = med,
-                                        memberName = memberName,
-                                        slot = slot,
-                                        hour = med.hourFor(slot),
-                                        minute = med.minuteFor(slot),
-                                        doseLog = log
+                            TimeSlot.entries.forEach { slot ->
+                                if (med.isSlotEnabled(slot)) {
+                                    val log = todayLogsByKey["${slot.name}_${med.id}"]
+                                    add(
+                                        ScheduledDoseItem(
+                                            medicine = med,
+                                            memberName = memberName,
+                                            slot = slot,
+                                            hour = med.hourFor(slot),
+                                            minute = med.minuteFor(slot),
+                                            doseLog = log
+                                        )
                                     )
-                                )
+                                }
                             }
                         }
-                    }
                 }.sortedWith(
                     compareBy<ScheduledDoseItem>(
                         { it.slot.ordinal },
@@ -388,13 +249,10 @@ class MedTimeViewModel(
                     )
                 }
 
-                val authUser = (auth as? AuthUiState.Authenticated)?.user
-                val expiresAt = (auth as? AuthUiState.Authenticated)?.sessionExpiresAtMillis ?: 0L
-
                 UiState.Success(
                     TimetableDashboardState(
-                        loggedInUser = authUser,
-                        sessionExpiresAtMillis = expiresAt,
+                        userId = currentUserId,
+                        userEmail = currentUserEmail,
                         userProfile = profile,
                         familyMembers = members,
                         selectedMemberId = effectiveMemberId,
@@ -425,7 +283,7 @@ class MedTimeViewModel(
     fun addFamilyMember(name: String, relation: String = "Family", onAdded: () -> Unit = {}) {
         viewModelScope.launch {
             _isSaving.value = true
-            val result = repository.addFamilyMember(name, relation)
+            val result = repository.addFamilyMember(currentUserId, name, relation)
             _isSaving.value = false
             result.onSuccess { member ->
                 _selectedMemberId.value = member.id
@@ -440,7 +298,7 @@ class MedTimeViewModel(
     fun renameFamilyMember(memberId: String, newName: String, onRenamed: () -> Unit = {}) {
         viewModelScope.launch {
             _isSaving.value = true
-            val result = repository.renameFamilyMember(memberId, newName)
+            val result = repository.renameFamilyMember(currentUserId, memberId, newName)
             _isSaving.value = false
             result.onSuccess { updatedName ->
                 _events.tryEmit("Updated profile name to $updatedName")
@@ -453,7 +311,7 @@ class MedTimeViewModel(
 
     fun deleteFamilyMember(memberId: String, onDeleted: () -> Unit = {}) {
         viewModelScope.launch {
-            val result = repository.deleteFamilyMember(memberId)
+            val result = repository.deleteFamilyMember(currentUserId, memberId)
             result.onSuccess { fallbackId ->
                 if (_selectedMemberId.value == memberId) {
                     _selectedMemberId.value = fallbackId
@@ -475,12 +333,14 @@ class MedTimeViewModel(
             val todayKey = todayDateKey()
             val result = if (item.isTaken) {
                 repository.clearDoseLog(
+                    userId = currentUserId,
                     dateKey = todayKey,
                     slot = item.slot,
                     medicineId = item.medicine.id
                 )
             } else {
                 repository.markDoseStatus(
+                    userId = currentUserId,
                     medicine = item.medicine,
                     slot = item.slot,
                     dateKey = todayKey,
@@ -497,6 +357,7 @@ class MedTimeViewModel(
     fun markDoseSkipped(item: ScheduledDoseItem) {
         viewModelScope.launch {
             val result = repository.markDoseStatus(
+                userId = currentUserId,
                 medicine = item.medicine,
                 slot = item.slot,
                 dateKey = todayDateKey(),
@@ -516,7 +377,7 @@ class MedTimeViewModel(
     ) {
         viewModelScope.launch {
             _isSaving.value = true
-            val result = repository.saveMedicine(medicineId, input)
+            val result = repository.saveMedicine(currentUserId, medicineId, input)
             _isSaving.value = false
             result.onSuccess {
                 _events.tryEmit(
@@ -532,15 +393,15 @@ class MedTimeViewModel(
 
     fun updateMedicineRecurrence(
         medicineId: String,
-        rule: com.example.model.RecurrenceRule,
+        rule: RecurrenceRule,
         onUpdated: () -> Unit = {}
     ) {
         viewModelScope.launch {
             _isSaving.value = true
-            val result = repository.updateMedicineRecurrence(medicineId, rule)
+            val result = repository.updateMedicineRecurrence(currentUserId, medicineId, rule)
             _isSaving.value = false
             result.onSuccess {
-                val summary = com.example.model.formatRecurrenceSummary(rule)
+                val summary = formatRecurrenceSummary(rule)
                 _events.tryEmit("Schedule updated: $summary")
                 onUpdated()
             }.onFailure { err ->
@@ -551,7 +412,7 @@ class MedTimeViewModel(
 
     fun toggleMedicineActive(medicine: Medicine, active: Boolean) {
         viewModelScope.launch {
-            val result = repository.toggleMedicineActive(medicine.id, active)
+            val result = repository.toggleMedicineActive(currentUserId, medicine.id, active)
             result.onSuccess {
                 _events.tryEmit(
                     if (active) "${medicine.name} reminders enabled"
@@ -565,7 +426,7 @@ class MedTimeViewModel(
 
     fun deleteMedicine(medicine: Medicine) {
         viewModelScope.launch {
-            val result = repository.deleteMedicine(medicine.id)
+            val result = repository.deleteMedicine(currentUserId, medicine.id)
             result.onSuccess {
                 _events.tryEmit("Removed ${medicine.name} from timetable")
             }.onFailure { err ->
@@ -576,6 +437,13 @@ class MedTimeViewModel(
 
     fun updateProfileAndDefaults(
         displayName: String,
+        firstName: String,
+        lastName: String,
+        gender: String,
+        dob: String,
+        state: String,
+        city: String,
+        phone: String,
         morningHour: Int,
         morningMinute: Int,
         afternoonHour: Int,
@@ -589,7 +457,15 @@ class MedTimeViewModel(
         viewModelScope.launch {
             _isSaving.value = true
             val result = repository.updateProfileAndDefaultTimes(
+                userId = currentUserId,
                 displayName = displayName,
+                firstName = firstName,
+                lastName = lastName,
+                gender = gender,
+                dob = dob,
+                state = state,
+                city = city,
+                phone = phone,
                 morningHour = morningHour,
                 morningMinute = morningMinute,
                 afternoonHour = afternoonHour,

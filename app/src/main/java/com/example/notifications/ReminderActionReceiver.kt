@@ -10,6 +10,8 @@ import com.example.model.MealRelation
 import com.example.model.Medicine
 import com.example.model.TimeSlot
 import com.example.model.todayDateKey
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,27 +52,31 @@ class ReminderActionReceiver : BroadcastReceiver() {
                 val pendingResult = goAsync()
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        val repo = MedicationRepository(context.applicationContext)
-                        val placeholderMed = Medicine(
-                            id = medicineId,
-                            name = medicineName,
-                            dosage = dosage,
-                            morningHour = if (slot == TimeSlot.MORNING) hour else 8,
-                            morningMinute = if (slot == TimeSlot.MORNING) minute else 0,
-                            afternoonHour = if (slot == TimeSlot.AFTERNOON) hour else 13,
-                            afternoonMinute = if (slot == TimeSlot.AFTERNOON) minute else 30,
-                            eveningHour = if (slot == TimeSlot.EVENING) hour else 18,
-                            eveningMinute = if (slot == TimeSlot.EVENING) minute else 0,
-                            nightHour = if (slot == TimeSlot.NIGHT) hour else 21,
-                            nightMinute = if (slot == TimeSlot.NIGHT) minute else 0
-                        )
-                        repo.markDoseStatus(
-                            medicine = placeholderMed,
-                            slot = slot,
-                            dateKey = todayDateKey(),
-                            status = DoseStatus.TAKEN,
-                            memberName = memberName
-                        )
+                        val uid = Firebase.auth.currentUser?.uid
+                        if (!uid.isNullOrBlank()) {
+                            val repo = MedicationRepository(context.applicationContext)
+                            val placeholderMed = Medicine(
+                                id = medicineId,
+                                name = medicineName,
+                                dosage = dosage,
+                                morningHour = if (slot == TimeSlot.MORNING) hour else 8,
+                                morningMinute = if (slot == TimeSlot.MORNING) minute else 0,
+                                afternoonHour = if (slot == TimeSlot.AFTERNOON) hour else 13,
+                                afternoonMinute = if (slot == TimeSlot.AFTERNOON) minute else 30,
+                                eveningHour = if (slot == TimeSlot.EVENING) hour else 18,
+                                eveningMinute = if (slot == TimeSlot.EVENING) minute else 0,
+                                nightHour = if (slot == TimeSlot.NIGHT) hour else 21,
+                                nightMinute = if (slot == TimeSlot.NIGHT) minute else 0
+                            )
+                            repo.markDoseStatus(
+                                userId = uid,
+                                medicine = placeholderMed,
+                                slot = slot,
+                                dateKey = todayDateKey(),
+                                status = DoseStatus.TAKEN,
+                                memberName = memberName
+                            )
+                        }
                     } finally {
                         pendingResult.finish()
                     }
