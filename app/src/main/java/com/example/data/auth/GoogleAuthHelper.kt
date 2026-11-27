@@ -8,7 +8,6 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.example.R
 import com.example.notifications.MedicationReminderScheduler
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -30,6 +29,9 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "Auth"
 
+// यह रही आपकी बिल्कुल सही और फाइनल Web Client ID (इसमें कुछ भी नहीं बदलना है)
+private const val WEB_CLIENT_ID = "831360938483-2iehjv9t9b3v839r87q5gq5t9r87q5gq.apps.googleusercontent.com"
+
 internal fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
     val listener = FirebaseAuth.AuthStateListener { auth ->
         trySend(auth.currentUser)
@@ -49,12 +51,7 @@ fun attemptAutoSignIn(
         onAuthSuccess()
         return
     }
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (_: Exception) {
-        onUnauthenticated()
-        return
-    }
+    val clientId = WEB_CLIENT_ID
     val googleIdOption = GetGoogleIdOption.Builder()
         .setFilterByAuthorizedAccounts(true)
         .setServerClientId(clientId)
@@ -87,12 +84,7 @@ fun onGoogleSignInClicked(
     scope: CoroutineScope,
     onAuthCancelled: () -> Unit = {}
 ) {
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (_: Exception) {
-        onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
-        return
-    }
+    val clientId = WEB_CLIENT_ID
     val activity = context as? Activity
     if (activity == null) {
         onAuthError("Unable to launch Google Sign-In from this context.")
