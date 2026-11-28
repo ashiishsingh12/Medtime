@@ -1,41 +1,132 @@
-package com.example
+package com.example.ui.screens
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.example.ui.screens.EmailAuthScreen
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        
-        val currentUser = FirebaseAuth.getInstance().currentUser
+@Composable
+fun EmailAuthScreen(onAuthSuccess: () -> Unit) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    
+    val coroutineScope = rememberCoroutineScope()
 
-        setContent {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                if (currentUser != null) {
-                    // अगर यूजर पहले से लॉग-इन है, तो आप यहाँ अपनी मुख्य होम स्क्रीन दिखा सकते हैं
-                    // अभी के लिए हम ईमेल ऑथेंटिकेशन स्क्रीन दिखा रहे हैं या होम स्क्रीन पर भेज सकते हैं
-                    EmailAuthScreen(
-                        onAuthSuccess = {
-                            // लॉगिन सफल होने पर आगे का काम
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Medtime Login",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // ईमेल इनपुट बॉक्स
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Email Address") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // पासवर्ड इनपुट बॉक्स
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (errorMessage != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = errorMessage ?: "",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (isLoading) {
+                CircularProgressIndicator()
+            } else {
+                // लॉगिन बटन
+                Button(
+                    onClick = {
+                        if (email.isBlank() || password.isBlank()) {
+                            errorMessage = "Email and password cannot be empty"
+                            return@Button
                         }
-                    )
-                } else {
-                    // अगर यूजर लॉग-इन नहीं है, तो ईमेल-पासवर्ड लॉगिन स्क्रीन दिखाएं
-                    EmailAuthScreen(
-                        onAuthSuccess = {
-                            // लॉगिन सफल होने पर रीकंपोजिशन या अगली स्क्रीन पर जाने का लॉजिक
+                        isLoading = true
+                        errorMessage = null
+                        coroutineScope.launch {
+                            try {
+                                FirebaseAuth.getInstance()
+                                    .signInWithEmailAndPassword(email.trim(), password)
+                                    .await()
+                                isLoading = false
+                                onAuthSuccess()
+                            } catch (e: Exception) {
+                                isLoading = false
+                                errorMessage = e.localizedMessage ?: "Login failed"
+                            }
                         }
-                    )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Login")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // नया अकाउंट रजिस्टर करने का बटन
+                OutlinedButton(
+                    onClick = {
+                        if (email.isBlank() || password.isBlank()) {
+                            errorMessage = "Email and password cannot be empty"
+                            return@Button
+                        }
+                        isLoading = true
+                        errorMessage = null
+                        coroutineScope.launch {
+                            try {
+                                FirebaseAuth.getInstance()
+                                    .createUserWithEmailAndPassword(email.trim(), password)
+                                    .await()
+                                isLoading = false
+                                onAuthSuccess()
+                            } catch (e: Exception) {
+                                isLoading = false
+                                errorMessage = e.localizedMessage ?: "Sign up failed"
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Register New Account")
                 }
             }
         }
