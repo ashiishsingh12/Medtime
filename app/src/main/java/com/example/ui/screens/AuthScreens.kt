@@ -38,7 +38,6 @@ fun EmailAuthScreen(onAuthSuccess: () -> Unit) {
             
             Spacer(modifier = Modifier.height(32.dp))
 
-            // ईमेल इनपुट बॉक्स
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
@@ -49,7 +48,6 @@ fun EmailAuthScreen(onAuthSuccess: () -> Unit) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // पासवर्ड इनपुट बॉक्स
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
@@ -78,20 +76,20 @@ fun EmailAuthScreen(onAuthSuccess: () -> Unit) {
                     onClick = {
                         if (email.isBlank() || password.isBlank()) {
                             errorMessage = "Email and password cannot be empty"
-                            return@Button
-                        }
-                        isLoading = true
-                        errorMessage = null
-                        coroutineScope.launch {
-                            try {
-                                FirebaseAuth.getInstance()
-                                    .signInWithEmailAndPassword(email.trim(), password)
-                                    .await()
-                                isLoading = false
-                                onAuthSuccess()
-                            } catch (e: Exception) {
-                                isLoading = false
-                                errorMessage = e.localizedMessage ?: "Login failed"
+                        } else {
+                            isLoading = true
+                            errorMessage = null
+                            coroutineScope.launch {
+                                try {
+                                    FirebaseAuth.getInstance()
+                                        .signInWithEmailAndPassword(email.trim(), password)
+                                        .await()
+                                    isLoading = false
+                                    onAuthSuccess()
+                                } catch (e: Exception) {
+                                    isLoading = false
+                                    errorMessage = e.localizedMessage ?: "Login failed"
+                                }
                             }
                         }
                     },
@@ -102,25 +100,25 @@ fun EmailAuthScreen(onAuthSuccess: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // नया अकाउंट रजिस्टर करने का बटन
+                // रजिस्टर बटन
                 OutlinedButton(
                     onClick = {
                         if (email.isBlank() || password.isBlank()) {
                             errorMessage = "Email and password cannot be empty"
-                            return@Button
-                        }
-                        isLoading = true
-                        errorMessage = null
-                        coroutineScope.launch {
-                            try {
-                                FirebaseAuth.getInstance()
-                                    .createUserWithEmailAndPassword(email.trim(), password)
-                                    .await()
-                                isLoading = false
-                                onAuthSuccess()
-                            } catch (e: Exception) {
-                                isLoading = false
-                                errorMessage = e.localizedMessage ?: "Sign up failed"
+                        } else {
+                            isLoading = true
+                            errorMessage = null
+                            coroutineScope.launch {
+                                try {
+                                    FirebaseAuth.getInstance()
+                                        .createUserWithEmailAndPassword(email.trim(), password)
+                                        .await()
+                                    isLoading = false
+                                    onAuthSuccess()
+                                } catch (e: Exception) {
+                                    isLoading = false
+                                    errorMessage = e.localizedMessage ?: "Sign up failed"
+                                }
                             }
                         }
                     },
